@@ -72,7 +72,7 @@ spec.dat.mat <- spec.dat$specimen %>%
         mutate(SAMPLING_FACTOR_MATURE = SAMPLING_FACTOR_SEL * PROP_MATURE,
                SAMPLING_FACTOR_IMMATURE = SAMPLING_FACTOR_SEL-SAMPLING_FACTOR_MATURE)
 
-# # saveRDS(spec.dat.mat, "./Maturity research/Output/sdmTMB_specdat.csv")
+ saveRDS(spec.dat.mat, "./Maturity research/Data/sdmTMB_maturespecdat.csv")
 # spec.mat.sel <- readRDS("./Maturity research/Output/sdmTMB_specdat.csv") %>%
 #                 mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
 #                         SAMPLING_FACTOR_SEL = SAMPLING_FACTOR/SEL, # account for size specific selectivity in abundance
