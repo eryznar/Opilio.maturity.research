@@ -11,10 +11,10 @@ source("./Maturity research/Scripts/load_libs_params.R")
 
 # LOAD DATA AND PROCESS ----------------------------------------------------------------------------------
 # sdmTMB model
-mod <- readRDS("C:/Users/emily.ryznar/Work/Documents/Crab functional maturity/Chionoecetes.maturity.workflow/Maturity data processing/Doc/Snow models/sdmTMB_spVAR_noBIN_k300.rda")
+mod <- readRDS("./Maturity research/Data/sdmTMB_spVAR_noBIN_k300.rda")
 
 # SAM
-SAM.dat <- read.csv("C:/Users/emily.ryznar/Work/Documents/Crab functional maturity/Chionoecetes.maturity.workflow/Maturity data processing/Output/snow_maleSAM.csv") %>%
+SAM.dat <- read.csv("./Maturity research/Data/SNOW_maleSAM.csv") %>%
   dplyr::rename(SAM = SAM_mean)
 
 
@@ -48,37 +48,33 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
                     SAMPLING_FACTOR = SAMPLING_FACTOR/SEL)
 
 #Filter predicted specimen data by params (not size yet for full join)
-spec.dat.mat <- spec.dat$specimen %>%
-        filter(YEAR %in% mod$data$YEAR, SHELL_CONDITION == 2, SEX == 1) %>%
-        mutate(SIZE_1MM = floor(SIZE),
-               BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5, closed = "left", dig.lab = 4),
-               BIN2 = BIN_5MM) %>%
-        separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
-        mutate(LOWER = as.numeric(sub('.', '', LOWER)),
-               UPPER = as.numeric(gsub('.$', '', UPPER)),
-               SIZE_5MM = (UPPER + LOWER)/2,
-               YEAR_SCALED = scale(YEAR)) %>%
-        mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
-              SAMPLING_FACTOR_SEL = SAMPLING_FACTOR/SEL) %>% # account for size specific selectivity in abundance
-        st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
-        st_transform(., crs = "+proj=utm +zone=2") %>%
-        cbind(st_coordinates(.)) %>%
-        as.data.frame(.) %>%
-        mutate(LATITUDE = Y/1000, # scale to km so values don't get too large
-               LONGITUDE = X/1000,
-               YEAR_F = as.factor(YEAR)) %>%
-        predict(mod, ., type = "response", se = FALSE) %>%
-        rename(PROP_MATURE = est) %>%
-        mutate(SAMPLING_FACTOR_MATURE = SAMPLING_FACTOR_SEL * PROP_MATURE,
-               SAMPLING_FACTOR_IMMATURE = SAMPLING_FACTOR_SEL-SAMPLING_FACTOR_MATURE)
-
- saveRDS(spec.dat.mat, "./Maturity research/Data/sdmTMB_maturespecdat.csv")
-# spec.mat.sel <- readRDS("./Maturity research/Output/sdmTMB_specdat.csv") %>%
-#                 mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
-#                         SAMPLING_FACTOR_SEL = SAMPLING_FACTOR/SEL, # account for size specific selectivity in abundance
-#                        SAMPLING_FACTOR_MATURE = SAMPLING_FACTOR_SEL * PROP_MATURE,  
-#                        SAMPLING_FACTOR_IMMATURE = SAMPLING_FACTOR_SEL - SAMPLING_FACTOR_MATURE)
+# spec.dat.mat <- spec.dat$specimen %>%
+#         filter(YEAR %in% mod$data$YEAR, SHELL_CONDITION == 2, SEX == 1) %>%
+#         mutate(SIZE_1MM = floor(SIZE),
+#                BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5, closed = "left", dig.lab = 4),
+#                BIN2 = BIN_5MM) %>%
+#         separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
+#         mutate(LOWER = as.numeric(sub('.', '', LOWER)),
+#                UPPER = as.numeric(gsub('.$', '', UPPER)),
+#                SIZE_5MM = (UPPER + LOWER)/2,
+#                YEAR_SCALED = scale(YEAR)) %>%
+#         mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
+#               SAMPLING_FACTOR_SEL = SAMPLING_FACTOR/SEL) %>% # account for size specific selectivity in abundance
+#         st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
+#         st_transform(., crs = "+proj=utm +zone=2") %>%
+#         cbind(st_coordinates(.)) %>%
+#         as.data.frame(.) %>%
+#         mutate(LATITUDE = Y/1000, # scale to km so values don't get too large
+#                LONGITUDE = X/1000,
+#                YEAR_F = as.factor(YEAR)) %>%
+#         predict(mod, ., type = "response", se = FALSE) %>%
+#         rename(PROP_MATURE = est) %>%
+#         mutate(SAMPLING_FACTOR_MATURE = SAMPLING_FACTOR_SEL * PROP_MATURE,
+#                SAMPLING_FACTOR_IMMATURE = SAMPLING_FACTOR_SEL-SAMPLING_FACTOR_MATURE)
 # 
+#  saveRDS(spec.dat.mat, "./Maturity research/Data/sdmTMB_maturespecdat.csv")
+
+spec.dat.mat <- readRDS("./Maturity research/Data/sdmTMB_maturespecdat.csv") # already accounts for selectivity
 
 
 # Immature abundance
@@ -218,7 +214,7 @@ model.dat <- right_join(SAM.abund, df.dat) %>%
   arrange(., YEAR) %>%
   dplyr::select(!c(DF_BIOMASS, MALE_ABUND, PROP_LG, PROP_SM, SM_ABUND, X, SPECIES, DISTRICT, SAM_hi, SAM_lo, SAM_sd, VAR_total))
 
-
+write.csv(model.dat, "./Maturity research/Data/model_dat.csv")
 
 M <- cor(model.dat %>% dplyr::select(!c(YEAR, SAM)), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,

@@ -52,12 +52,12 @@ cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW",
                                 size_min = 40, size_max = NULL,  sex = "male", 
                                 shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
 
-# cpue.lg <- crabpack::calc_cpue(crab_data = spec.dat, species = "SNOW", 
-#                                size_min = 95, size_max = NULL,  sex = "male", 
-#                                shell_condition = "new_hardshell")  #filtering for relevant range of SAM crab
+cpue.lg <- crabpack::calc_cpue(crab_data = spec.dat, species = "SNOW", 
+                               size_min = 95, size_max = NULL,  sex = "male",
+                               shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
 
 #Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
-temp_occ <- cpue%>%
+temp_occ <- cpue.lg%>%
               right_join(., spec.dat$haul) %>%
                 dplyr::select(YEAR, LATITUDE, LONGITUDE, STATION_ID, CPUE, GEAR_TEMPERATURE) %>%
                 filter(is.na(GEAR_TEMPERATURE) == FALSE) %>%
@@ -75,4 +75,4 @@ temp_occ %>%
 
 
 
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied_lg.csv")
