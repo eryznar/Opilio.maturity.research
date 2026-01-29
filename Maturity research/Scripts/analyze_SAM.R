@@ -214,7 +214,7 @@ model.dat <- right_join(SAM.abund, df.dat) %>%
   arrange(., YEAR) %>%
   dplyr::select(!c(DF_BIOMASS, MALE_ABUND, PROP_LG, PROP_SM, SM_ABUND, X, SPECIES, DISTRICT, SAM_hi, SAM_lo, SAM_sd, VAR_total))
 
-write.csv(model.dat, "./Maturity research/Data/model_dat.csv")
+#write.csv(model.dat, "./Maturity research/Data/model_dat.csv")
 
 M <- cor(model.dat %>% dplyr::select(!c(YEAR, SAM)), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
@@ -277,7 +277,7 @@ combos <- expand_grid(
   lg = lg.pars,
   sm = sm.pars,
   tocc = tocc.pars) %>%
-  filter(!(is.na(lg) & is.na(sm) & is.na(ice)))
+  filter(!(is.na(lg) & is.na(sm) & is.na(ice) & is.na(tocc)))
 
 # Fit models over parameter combinations
 fits <- pmap_dfr(
