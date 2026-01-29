@@ -1,7 +1,4 @@
 ## ------------------------------------------------------------
-source("./Maturity research/Scripts/load_libs_params.R")
-
-## ------------------------------------------------------------
 # PURPOSE: to analyze maturity patterns in relation to biological and environmental drivers
 
 # Author: Emily Ryznar
