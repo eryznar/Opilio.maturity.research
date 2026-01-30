@@ -513,7 +513,62 @@ combos <- tidyr::expand_grid(
 
 safe_gam <- purrr::safely(gam)
 
-fits <- purrr::pmap_dfr(
+fits3 <- purrr::pmap_dfr(
+  combos,
+  function(lg, sm, ice, tocc, mat) {
+    
+    terms <- c(
+      if (!is.na(lg))   paste0("s(", lg,   ",k=3)") else NULL,
+      if (!is.na(sm))   paste0("s(", sm,   ",k=3)") else NULL,
+      if (!is.na(tocc)) paste0("s(", tocc, ",k=3)") else NULL,
+      if (!is.na(ice))  paste0("s(", ice,  ",k=3)") else NULL,
+      if (!is.na(mat))  paste0("s(", mat,  ",k=3)") else NULL
+    )
+    
+    fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
+    
+    fit <- safe_gam(
+      fml,
+      data   = model.dat3,
+      family = betar(link = "logit"),
+      method = "REML"
+    )
+    
+    if (!is.null(fit$error)) {
+      return(tibble::tibble(
+        sm_term   = sm,
+        mat_term  = mat,
+        male_term = lg,
+        ice_term  = ice,
+        tocc_term = tocc,
+        k_terms   = length(terms),
+        AIC       = NA_real_,
+        GCV       = NA_real_,
+        cv_rmse   = NA_real_,
+        edf_total = NA_real_,
+        error     = conditionMessage(fit$error)
+      ))
+    }
+    
+    cv_err <- safe_cv_rmse(fml, data = model.dat3, k_folds = k_folds)
+    
+    tibble::tibble(
+      sm_term   = sm,
+      mat_term  = mat,
+      male_term = lg,
+      ice_term  = ice,
+      tocc_term = tocc,
+      k_terms   = length(terms),
+      AIC       = AIC(fit$result),
+      GCV       = fit$result$gcv.ubre,
+      cv_rmse   = cv_err,
+      edf_total = sum(fit$result$edf),
+      error     = NA_character_
+    )
+  }
+)
+
+fits4 <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc, mat) {
     
@@ -568,14 +623,23 @@ fits <- purrr::pmap_dfr(
   }
 )
 # fit best model ----
-
+fits <- rbind(fits3 %>% mutate(smooth = 3), fits %>% mutate(smooth = 4))
 fits %>% arrange(cv_rmse, AIC)
 
 # fit model
 mod <- gam(
   PMAT_5565 ~ 
     s(FEM_INST1_ABUND,         k = 4) +
-    s(FEM_MAT_ABUND_lag3, k = 4)+
+    s(MALE_LG_ABUND_avg3lag3, k = 4)+
+    s(FEM_TOCC_lag1, k = 4),
+  data        = model.dat3,
+  family      = betar(link = "logit"),
+)
+
+mod <- gam(
+  PMAT_5565 ~ 
+    s(FEM_INST1_ABUND,         k = 4) +
+    s(FEM_MAT_ABUND_lag3 , k = 4)+
     s(ICE_avg3lag3, k = 4),
   data        = model.dat3,
   family      = betar(link = "logit"),

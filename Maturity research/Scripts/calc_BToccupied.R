@@ -47,6 +47,7 @@ corners <- stations %>%
 
 
 ##########################################
+# MALES
 # use crabpack to calculate zero-filled, per-station mature CPUE
 cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW", 
                                 size_min = 40, size_max = NULL,  sex = "male", 
@@ -75,4 +76,37 @@ temp_occ %>%
 
 
 
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied_lg.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
+
+##########################################
+# FEMALES
+# use crabpack to calculate zero-filled, per-station mature CPUE
+cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW", 
+                            size_min = 35, size_max = NULL,  sex = "female")  #filtering for relevant range of SAM crab
+
+
+#Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
+temp_occ <- cpue%>%
+  right_join(., spec.dat$haul) %>%
+  dplyr::select(YEAR, LATITUDE, LONGITUDE, STATION_ID, CPUE, GEAR_TEMPERATURE) %>%
+  filter(is.na(GEAR_TEMPERATURE) == FALSE) %>%
+  group_by(YEAR) %>% 
+  summarise(temp_occ = weighted.mean(GEAR_TEMPERATURE, w = CPUE, na.rm = T)) %>%
+  filter(is.na(temp_occ) == FALSE) 
+
+temp_occ %>%
+  ggplot(aes(x = YEAR, y = temp_occ))+
+  geom_point(size=3)+
+  geom_line() +
+  theme_bw()
+
+
+
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied_females.csv")
+
+
+
+
+
+
+

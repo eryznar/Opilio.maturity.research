@@ -4,8 +4,9 @@
 
 # 1) LOAD LIBS/PARAMS ----
   
-source("./Maturity data processing/Scripts/1) load_libs_params.R")
+source("./Maturity research/Scripts/1) load_libs_params.R")
 
+ice.years <- 1980:1988
 ice.years <-1989:2000
 ice.years <- 2001:2013
 ice.years <- 2014:2025
@@ -82,5 +83,5 @@ ice.years <- 2014:2025
     
 
   # Save
-  write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1989-", current.year, ".csv"), row.names = FALSE)
+  write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"), row.names = FALSE)
   
