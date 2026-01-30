@@ -221,7 +221,7 @@ model.dat3 <- fem.model.dat2 %>%
 k_folds <- 5
 
 cv_rmse <- function(fml, data, k_folds = 5) {
-  data  <- dplyr::arrange(data, YEAR, STATION_ID)
+  data  <- dplyr::arrange(data, YEAR)
   n     <- nrow(data)
   folds <- cut(seq_len(n), breaks = k_folds, labels = FALSE)
   
@@ -234,14 +234,15 @@ cv_rmse <- function(fml, data, k_folds = 5) {
     train_dat <- data[train_idx, , drop = FALSE]
     test_dat  <- data[test_idx,  , drop = FALSE]
     
-    fit_k <- gam(
+    fit_k <- gamm(
       fml,
-      data   = train_dat,
-      family = betar(link = "logit"),  # PMAT_5565 must be in (0,1)
-      method = "REML"
+      data        = train_dat,
+      family      = gaussian(),
+      method      = "REML",
+      correlation = corAR1()  # or remove if you want IID
     )
     
-    p_hat <- predict(fit_k, newdata = test_dat, type = "response")
+    p_hat <- predict(fit_k$gam, newdata = test_dat, type = "response")
     errs[k] <- sqrt(mean((test_dat$PMAT_5565 - p_hat)^2, na.rm = TRUE))
   }
   
@@ -258,12 +259,10 @@ response <- "PMAT_5565"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LGMALE_CPUE",   names(model.dat3))])
 mat.pars  <- c(NA, names(model.dat3)[grep("MATFEM_CPUE",  names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_CPUE",names(model.dat3))])
-tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
-#ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("INST1_CPUE",   names(model.dat3))])
+tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",         names(model.dat3))])
 
 combos <- tidyr::expand_grid(
-  #ice  = ice.pars,
   mat  = mat.pars,
   lg   = lg.pars,
   sm   = sm.pars,
@@ -271,13 +270,12 @@ combos <- tidyr::expand_grid(
 ) %>%
   dplyr::filter(!(is.na(lg) & is.na(sm) & is.na(tocc) & is.na(mat)))
 
-safe_gam <- purrr::safely(gam)
+safe_gamm <- purrr::safely(gamm)
 
-fits<- purrr::pmap_dfr(
+fits <- purrr::pmap_dfr(
   combos,
   function(lg, sm, tocc, mat) {
     
-    # smooth terms chosen by grid
     bio_terms <- c(
       if (!is.na(lg))   paste0("s(", lg,   ",k=4)") else NULL,
       if (!is.na(sm))   paste0("s(", sm,   ",k=4)") else NULL,
@@ -285,19 +283,19 @@ fits<- purrr::pmap_dfr(
       if (!is.na(mat))  paste0("s(", mat,  ",k=4)") else NULL
     )
     
-    # add spatial interaction smooth of latitude and longitude
     terms <- c(
-      "s(LATITUDE, LONGITUDE, bs = \"tp\", k = 30)",  # or smaller k if needed
+      "s(LATITUDE, LONGITUDE, bs = \"tp\", k = 30)",  # spatial interaction
       bio_terms
     )
     
     fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
     
-    fit <- safe_gam(
+    fit <- safe_gamm(
       fml,
-      data   = model.dat3,
-      family = betar(link = "logit"),
-      method = "REML"
+      data        = model.dat3,
+      family      = gaussian(),
+      method      = "REML",
+      correlation = corAR1()
     )
     
     if (!is.null(fit$error)) {
@@ -305,7 +303,6 @@ fits<- purrr::pmap_dfr(
         sm_term   = sm,
         mat_term  = mat,
         male_term = lg,
-        #ice_term  = ice,
         tocc_term = tocc,
         k_terms   = length(terms),
         AIC       = NA_real_,
@@ -322,15 +319,30 @@ fits<- purrr::pmap_dfr(
       sm_term   = sm,
       mat_term  = mat,
       male_term = lg,
-      #ice_term  = ice,
       tocc_term = tocc,
       k_terms   = length(terms),
-      AIC       = AIC(fit$result),
+      AIC       = AIC(fit$result$lme),
       GCV       = fit$result$gcv.ubre,
       cv_rmse   = cv_err,
-      edf_total = sum(fit$result$edf),
+      edf_total = sum(fit$result$gam$edf),
       error     = NA_character_
     )
   }
 )
+
+
+# Fit best model
+
+# fit model
+mod <- bam(
+  PMAT_5565 ~ 
+    s(INST1_CPUE_avg2,         k = 4) +
+    s(LGMALE_CPUE_avg3, k = 4)+
+    s(MATFEM_CPUE_avg2, k = 4)+
+    s(LATITUDE, LONGITUDE, bs = "tp"),
+  data        = model.dat3,
+  family      = betar(link = "logit"),
+)
+
+
 
