@@ -48,6 +48,25 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
   mutate(SEL = predict(s.gam, newdata= ., type = "response"),
          SAMPLING_FACTOR = SAMPLING_FACTOR/SEL)
 
+# Calculate wighted Q95
+male.Q95 <- spec.dat.sel$specimen %>%
+  filter(SEX == 1,
+         SHELL_CONDITION == 1) %>%          # newshell
+  group_by(YEAR) %>%
+  reframe(
+    Q95 = Hmisc::wtd.quantile(
+      x      = SIZE,
+      weights= SAMPLING_FACTOR,
+      probs  = 0.95,
+      na.rm  = TRUE
+    ))
+
+ggplot()+
+  geom_point()+
+  geom_line(male.Q95, mapping = aes(YEAR, Q95), color = "green")+
+  geom_line(SAM.dat, mapping = aes(YEAR, SAM), color = "blue")+
+  theme_bw()
+
 #Filter predicted specimen data by params (not size yet for full join)
 # spec.dat.mat <- spec.dat$specimen %>%
 #         filter(YEAR %in% mod$data$YEAR, SHELL_CONDITION == 2, SEX == 1) %>%
@@ -236,7 +255,7 @@ ggplot(mdat.long, aes(YEAR, Value))+
 ## ------------------------------------------------------------
 ## 2) Build running means (and keep in one object)
 ## ------------------------------------------------------------
-max_lag <- 6
+max_lag <- 3
 
 model.dat2 <- model.dat %>%
   dplyr::select(!EXP_RATE)%>%
@@ -308,18 +327,11 @@ ggplot(long_df,
   theme(panel.grid.minor.x = element_blank())
 
 # select top |cor| for *negative* lags (covariate leads SAM)
-lag0 <- long_df %>%
-  filter(lag == 0) %>%
+best_lags <- long_df %>%
+  filter(lag <= 0) %>%
   group_by(short_var) %>%
-  slice_max(order_by = abs(cor), n = 1, with_ties = FALSE)
+  slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
 
-# Add one best negative lag candidate (delayed effect)
-lag_neg <- long_df %>%
-  filter(lag < 0) %>%
-  group_by(short_var) %>%
-  slice_max(order_by = abs(cor), n = 1, with_ties = FALSE)
-
-best_lags <- bind_rows(lag0, lag_neg) %>% ungroup() %>% arrange(short_var, -abs(cor))
 
 
 ## ------------------------------------------------------------
@@ -329,12 +341,10 @@ model.dat3 <- model.dat2 %>%
   dplyr::select(YEAR, SAM, dplyr::any_of(best_lags$var)) %>%
   arrange(YEAR) %>%
   mutate(
-    ICE_lag1 = lag(ICE, 1),
-    INST1_ABUND_lag1 = lag(INST1_ABUND, 1),
-    LG_ABUND_avg3lag5 = lag(LG_ABUND_avg3, 5),
-    TOCC_avg3lag5 = lag(TOCC_avg3, 5)) %>%
-  dplyr::select(YEAR, SAM, ICE, ICE_lag1, INST1_ABUND_avg2, INST1_ABUND_lag1, LG_ABUND, LG_ABUND_avg3lag5, 
-                TOCC, TOCC_avg3lag5)
+    LG_ABUND_lag3 = lag(LG_ABUND, 3),
+    TOCC_lag3 = lag(TOCC, 3)) %>%
+  dplyr::select(YEAR, SAM, ICE, ICE_avg2, INST1_ABUND_avg2, INST1_ABUND, LG_ABUND, LG_ABUND_lag3, 
+                TOCC, TOCC_avg3)
 
 ## ------------------------------------------------------------
 ## 5) CV function
@@ -444,8 +454,7 @@ fits %>% arrange(cv_rmse, AIC)
 # fit model
 mod <- gamm(
   SAM ~ s(INST1_ABUND_avg2, k = 4) +
-    s(LG_ABUND_avg3lag5,    k = 4)+
-    s(TOCC, k = 4),
+    s(LG_ABUND,    k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian()
