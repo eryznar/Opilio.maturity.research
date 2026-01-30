@@ -102,7 +102,8 @@ unique(is.na(abund.dat))
 
 
 # Bind with SAM
-SAM.df = right_join(dat, abund.dat)
+SAM.df = right_join(dat, abund.dat) %>%
+  full_join(., data.frame(YEAR = 2020))
 
 # Load Jan-April ice data
 ice <- read.csv(paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv")) %>%
@@ -232,14 +233,13 @@ model.dat3 <- fem.model.dat2 %>%
     FEM_INST1_ABUND_avg3lag3 = lag(FEM_INST1_ABUND_avg3, 3),
     FEM_MAT_ABUND_avg2lag3 = lag(FEM_MAT_ABUND_avg2, 3),
     FEM_TOCC_lag3 = lag(FEM_TOCC, 3),
-    FEM_TOCC_avg2lag2 = lag(FEM_TOCC_avg2, 2),
     ICE_lag3 = lag(ICE, 3),
     ICE_lag1 = lag(ICE,1),
     MALE_LG_ABUND_lag1 = lag(MALE_LG_ABUND, 1)) %>%
   dplyr::select(YEAR, SAM, PMAT_5565, 
                 FEM_INST1_ABUND_avg3lag2, FEM_INST1_ABUND_avg3lag3, 
                 FEM_MAT_ABUND_avg2lag3, FEM_MAT_ABUND,
-                FEM_TOCC_lag3, FEM_TOCC_avg2lag2,
+                FEM_TOCC_lag3, FEM_TOCC,
                 ICE_lag3, ICE_lag1,
                 MALE_LG_ABUND_avg2, MALE_LG_ABUND_lag1)
 
@@ -513,62 +513,7 @@ combos <- tidyr::expand_grid(
 
 safe_gam <- purrr::safely(gam)
 
-fits3 <- purrr::pmap_dfr(
-  combos,
-  function(lg, sm, ice, tocc, mat) {
-    
-    terms <- c(
-      if (!is.na(lg))   paste0("s(", lg,   ",k=3)") else NULL,
-      if (!is.na(sm))   paste0("s(", sm,   ",k=3)") else NULL,
-      if (!is.na(tocc)) paste0("s(", tocc, ",k=3)") else NULL,
-      if (!is.na(ice))  paste0("s(", ice,  ",k=3)") else NULL,
-      if (!is.na(mat))  paste0("s(", mat,  ",k=3)") else NULL
-    )
-    
-    fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
-    
-    fit <- safe_gam(
-      fml,
-      data   = model.dat3,
-      family = betar(link = "logit"),
-      method = "REML"
-    )
-    
-    if (!is.null(fit$error)) {
-      return(tibble::tibble(
-        sm_term   = sm,
-        mat_term  = mat,
-        male_term = lg,
-        ice_term  = ice,
-        tocc_term = tocc,
-        k_terms   = length(terms),
-        AIC       = NA_real_,
-        GCV       = NA_real_,
-        cv_rmse   = NA_real_,
-        edf_total = NA_real_,
-        error     = conditionMessage(fit$error)
-      ))
-    }
-    
-    cv_err <- safe_cv_rmse(fml, data = model.dat3, k_folds = k_folds)
-    
-    tibble::tibble(
-      sm_term   = sm,
-      mat_term  = mat,
-      male_term = lg,
-      ice_term  = ice,
-      tocc_term = tocc,
-      k_terms   = length(terms),
-      AIC       = AIC(fit$result),
-      GCV       = fit$result$gcv.ubre,
-      cv_rmse   = cv_err,
-      edf_total = sum(fit$result$edf),
-      error     = NA_character_
-    )
-  }
-)
-
-fits4 <- purrr::pmap_dfr(
+fits<- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc, mat) {
     
@@ -623,7 +568,6 @@ fits4 <- purrr::pmap_dfr(
   }
 )
 # fit best model ----
-fits <- rbind(fits3 %>% mutate(smooth = 3), fits %>% mutate(smooth = 4))
 fits %>% arrange(cv_rmse, AIC)
 
 # fit model
@@ -636,13 +580,5 @@ mod <- gam(
   family      = betar(link = "logit"),
 )
 
-mod <- gam(
-  PMAT_5565 ~ 
-    s(FEM_INST1_ABUND,         k = 4) +
-    s(FEM_MAT_ABUND_lag3 , k = 4)+
-    s(ICE_avg3lag3, k = 4),
-  data        = model.dat3,
-  family      = betar(link = "logit"),
-)
 
 diagnose(mod)

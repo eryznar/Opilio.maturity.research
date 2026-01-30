@@ -51,6 +51,7 @@ ice.years <- 2014:2025
   ice.files <- files[grep("ERA5_ice", files)]
  
  ice.means <- data.frame()
+ ice.spatial <- data.frame()
  for(ii in 1:length(ice.files)){
    # Process ice data using tidync()
    tidync(paste0("./Maturity research/Data/", ice.files[ii])) %>%
@@ -62,12 +63,20 @@ ice.years <- 2014:2025
             month = lubridate::month(valid_time),
             latitude = as.numeric(as.character(latitude)),
             longitude = as.numeric(as.character(longitude))) %>%
-     filter(month %in% c(1:4)) %>% #months = Jan-Apr
+     filter(month %in% c(1:4)) -> ice
+   
+   ice %>%
      group_by(year, month)  %>%
-     reframe(value= mean(siconc)) -> ice
+     reframe(value= mean(siconc)) -> mean.ice
+   
+   ice %>%
+     group_by(year, month, latitude, longitude)  %>%
+     reframe(value= mean(siconc)) -> spatial.ice
    
    
-   ice.means <- rbind(ice.means, ice)
+   
+   ice.means <- rbind(ice.means, mean.ice)
+   ice.spatial <- rbind(ice.spatial, spatial.ice)
    
  }
 
@@ -80,8 +89,19 @@ ice.years <- 2014:2025
     ungroup() %>%
     group_by(year, name) %>%
     reframe(value = mean(value)) -> ice.dat
+  
+  # Scale, and compute Jan-Feb and Mar-Apr means
+  ice.spatial %>%
+    group_by(month, latitude, longitude) %>%
+    mutate(value = scale(value),
+           name = case_when((month %in% 1:2) ~ "Jan-Feb ice",
+                            TRUE ~ "Mar-Apr ice")) %>%
+    ungroup() %>%
+    group_by(year, latitude, longitude, name) %>%
+    reframe(value = mean(value)) -> spatial.ice.dat
     
 
   # Save
   write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"), row.names = FALSE)
+  write.csv(spatial.ice.dat, paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
   
