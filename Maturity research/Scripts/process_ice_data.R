@@ -4,7 +4,7 @@
 
 # 1) LOAD LIBS/PARAMS ----
   
-source("./Maturity research/Scripts/1) load_libs_params.R")
+source("./Maturity research/Scripts/load_libs_params.R")
 
 ice.years <- 1980:1988
 ice.years <-1989:2000
@@ -31,8 +31,7 @@ ice.years <- 2014:2025
     "month" = sprintf("%02d", 1:12),
     "day" = sprintf("%02d", 1:31),
     "time" = sprintf("%02d:00", 0:23),
-    "area" = c(64, -180, 55, -160),           # Bering 
-    "format" = "netcdf",                  
+    "area" = c(64, -182, 50, -160),      "format" = "netcdf",                  
     "target" = paste0("ERA5_ice_", min(ice.years), "-", max(ice.years), ".nc") # target file name
   )
   
@@ -55,8 +54,8 @@ ice.years <- 2014:2025
  for(ii in 1:length(ice.files)){
    # Process ice data using tidync()
    tidync(paste0("./Maturity research/Data/", ice.files[ii])) %>%
-     hyper_filter(longitude = longitude >= -180 & longitude <= -165,
-                  latitude = latitude >= 55 & latitude <= 63) %>%
+     hyper_filter(longitude = longitude >= -182 & longitude <= -160,
+                  latitude = latitude >= 50 & latitude <= 64) %>%
      activate("siconc") %>%
      hyper_tibble() %>%
      mutate(year = lubridate::year(valid_time),

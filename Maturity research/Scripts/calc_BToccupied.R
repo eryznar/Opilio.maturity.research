@@ -16,7 +16,8 @@ source("./Maturity research/Scripts/load_libs_params.R")
 
 # Selectivity
 sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
-  rename(SEL = selectivity, SIZE_5MM = size)
+  rename(SEL = selectivity, SIZE_5MM = size) %>%
+  filter(year != "GAM predictions")
 
 s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
 
