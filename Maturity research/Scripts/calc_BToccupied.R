@@ -59,7 +59,7 @@ cpue.lg <- crabpack::calc_cpue(crab_data = spec.dat, species = "SNOW",
                                shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
 
 #Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
-temp_occ <- cpue.lg%>%
+temp_occ <- cpue%>%
               right_join(., spec.dat$haul) %>%
                 dplyr::select(YEAR, LATITUDE, LONGITUDE, STATION_ID, CPUE, GEAR_TEMPERATURE) %>%
                 filter(is.na(GEAR_TEMPERATURE) == FALSE) %>%

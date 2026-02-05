@@ -12,11 +12,11 @@ source("./Maturity research/Scripts/load_libs_params.R")
 
 # LOAD DATA AND PROCESS ----------------------------------------------------------------------------------
 # sdmTMB model
-mod <- readRDS("./Maturity research/Data/sdmTMB_spVAR_noBIN_k300.rda")
+mod <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
 
 # SAM
 SAM.dat <- read.csv("./Maturity research/Data/SNOW_maleSAM.csv") %>%
-  dplyr::rename(SAM = SAM_mean)
+  dplyr::select(!X)
 
 
 ggplot(SAM.dat, aes(YEAR, SAM))+
@@ -49,26 +49,9 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
   mutate(SEL = predict(s.gam, newdata= ., type = "response"),
          SAMPLING_FACTOR = SAMPLING_FACTOR/SEL)
 
-# Calculate wighted Q95
-male.Q95 <- spec.dat.sel$specimen %>%
-  filter(SEX == 1,
-         SHELL_CONDITION == 1) %>%          # newshell
-  group_by(YEAR) %>%
-  reframe(
-    Q95 = Hmisc::wtd.quantile(
-      x      = SIZE,
-      weights= SAMPLING_FACTOR,
-      probs  = 0.95,
-      na.rm  = TRUE
-    ))
 
-ggplot()+
-  geom_point()+
-  geom_line(male.Q95, mapping = aes(YEAR, Q95), color = "green")+
-  geom_line(SAM.dat, mapping = aes(YEAR, SAM), color = "blue")+
-  theme_bw()
 
-#Filter predicted specimen data by params (not size yet for full join)
+# #Filter predicted specimen data by params (not size yet for full join)
 # spec.dat.mat <- spec.dat$specimen %>%
 #         filter(YEAR %in% mod$data$YEAR, SHELL_CONDITION == 2, SEX == 1) %>%
 #         mutate(SIZE_1MM = floor(SIZE),
@@ -230,12 +213,11 @@ t_occ <- read.csv("./Maturity research/Data/BT_occupied.csv") %>%
 # Bind all dataframes into df for modeling and plot
 model.dat <- right_join(SAM.abund, df.dat) %>%
   right_join(., ice) %>%
-  right_join(., t_occ %>% dplyr::select(!X)) %>%
+  right_join(., t_occ) %>%
   right_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1))) %>%
   arrange(YEAR) %>%
   dplyr::select(!c(DF_BIOMASS, MALE_ABUND, PROP_LG, PROP_SM,
-                   SM_ABUND, X, SPECIES, DISTRICT,
-                   SAM_hi, SAM_lo, SAM_sd, VAR_total))
+                   SM_ABUND, X, SPECIES, DISTRICT, EXP_RATE))
 
 M <- cor(model.dat %>% dplyr::select(!c(YEAR, SAM)), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
@@ -259,7 +241,6 @@ ggplot(mdat.long, aes(YEAR, Value))+
 max_lag <- 3
 
 model.dat2 <- model.dat %>%
-  dplyr::select(!EXP_RATE)%>%
   arrange(YEAR) %>%
   mutate(
     # 2‑ and 3‑year running means
@@ -341,10 +322,7 @@ best_lags <- long_df %>%
 model.dat3 <- model.dat2 %>%
   dplyr::select(YEAR, SAM, dplyr::any_of(best_lags$var)) %>%
   arrange(YEAR) %>%
-  mutate(
-    LG_ABUND_lag3 = lag(LG_ABUND, 3),
-    TOCC_lag3 = lag(TOCC, 3)) %>%
-  dplyr::select(YEAR, SAM, ICE, ICE_avg2, INST1_ABUND_avg2, INST1_ABUND, LG_ABUND, LG_ABUND_lag3, 
+  dplyr::select(YEAR, SAM, ICE, ICE_avg2, INST1_ABUND, INST1_ABUND_avg2, LG_ABUND, LG_ABUND_avg2, 
                 TOCC, TOCC_avg3)
 
 ## ------------------------------------------------------------
@@ -454,7 +432,7 @@ fits %>% arrange(cv_rmse, AIC)
 
 # fit model
 mod <- gamm(
-  SAM ~ s(INST1_ABUND_avg2, k = 4) +
+  SAM ~ s(INST1_ABUND, k = 4) +
     s(LG_ABUND,    k = 4),
   correlation = corAR1(),
   data        = model.dat3,
