@@ -46,6 +46,16 @@ ggplot(fem.SAM, aes(YEAR, SAM))+
   geom_line() +
   theme_bw()
 
+SAM.dat <- read.csv("./Maturity research/Data/SNOW_femaleSAM.csv") %>%
+  dplyr::select(!X) %>%
+  filter(YEAR >=1989)
+
+ggplot(SAM.dat, aes(YEAR, SAM))+
+  geom_point()+
+  geom_line() +
+  theme_bw()+
+  geom_smooth()
+
 
 # Weighted prop mature in 55-65
 # Calculate weighted mean SAM for mature female
@@ -60,10 +70,10 @@ fem.pmat <- spec.dat.sel$specimen %>%
          IMMATURE = TOT_CRAB - MATURE,
          PROP_MATURE = MATURE/TOT_CRAB,
          PROP_IMMATURE = IMMATURE/TOT_CRAB) %>%
-  dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE) %>%
+  dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE, TOT_CRAB) %>%
   rename(PMAT_5565 = PROP_MATURE) 
 
-dat <- right_join(fem.pmat, fem.SAM)
+dat <- right_join(fem.pmat, SAM.dat)
 
 ggplot(dat, aes(YEAR, PMAT_5565))+
   geom_point()+
@@ -91,7 +101,7 @@ bioabund.matfem.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, specie
 
 # instar 1 abundance (30-50mm) (Sainte Marie?)
 instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                    size_min = 30, size_max = 40,  sex = "female", 
+                                    size_min = 35, size_max = 45,  sex = "female", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
   reframe(FEM_INST1_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
@@ -122,9 +132,11 @@ t_occ <- read.csv("./Maturity research/Data/BT_occupied_females.csv") %>%
 fem.model.dat <- right_join(SAM.df, ice) %>%
   right_join(., t_occ %>% dplyr::select(!X)) %>%
   right_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1))) %>%
-  arrange(YEAR) 
+  arrange(YEAR) %>%
+  filter(YEAR >=1989) %>%
+  dplyr::select(!c(SPECIES, DISTRICT))
 
-M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)), use = "pairwise.complete.obs", method = "pearson")
+M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
                    type = "upper",
                    method = "square",
@@ -143,22 +155,22 @@ ggplot(femdat.long, aes(YEAR, Value))+
 ## ------------------------------------------------------------
 ## 2) Build running means (and keep in one object)
 ## ------------------------------------------------------------
-max_lag <- 3
+max_lag <- 7
 
 fem.model.dat2 <- fem.model.dat %>%
   arrange(YEAR) %>%
   mutate(
     # 2‑ and 3‑year running means
     ICE_avg2        = zoo::rollmean(ICE,         k = 2, fill = NA, align = "right"),
-    ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
+    #ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
     FEM_INST1_ABUND_avg2= zoo::rollmean(FEM_INST1_ABUND, k = 2, fill = NA, align = "right"),
-    FEM_INST1_ABUND_avg3= zoo::rollmean(FEM_INST1_ABUND, k = 3, fill = NA, align = "right"),
+    #FEM_INST1_ABUND_avg3= zoo::rollmean(FEM_INST1_ABUND, k = 3, fill = NA, align = "right"),
     MALE_LG_ABUND_avg2   = zoo::rollmean(MALE_LG_ABUND,    k = 2, fill = NA, align = "right"),
-    MALE_LG_ABUND_avg3   = zoo::rollmean(MALE_LG_ABUND,    k = 3, fill = NA, align = "right"),
+    #MALE_LG_ABUND_avg3   = zoo::rollmean(MALE_LG_ABUND,    k = 3, fill = NA, align = "right"),
     FEM_TOCC_avg2       = zoo::rollmean(FEM_TOCC,        k = 2, fill = NA, align = "right"),
-    FEM_TOCC_avg3       = zoo::rollmean(FEM_TOCC,        k = 3, fill = NA, align = "right"),
+    #FEM_TOCC_avg3       = zoo::rollmean(FEM_TOCC,        k = 3, fill = NA, align = "right"),
     FEM_MAT_ABUND_avg2 = zoo::rollmean(FEM_MAT_ABUND,    k = 2, fill = NA, align = "right"),
-    FEM_MAT_ABUND_avg3 = zoo::rollmean(FEM_MAT_ABUND,    k = 3, fill = NA, align = "right")
+    #FEM_MAT_ABUND_avg3 = zoo::rollmean(FEM_MAT_ABUND,    k = 3, fill = NA, align = "right")
   )
 
 # ------------------------------------------
@@ -168,7 +180,7 @@ response <- "SAM"
 
 # CCF ----
 dat_ccf <- fem.model.dat2
-vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "MATURE", "IMMATURE")]
+vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565")]
 cc_df   <- data.frame()
 for (vv in vars) {
   pp <- dat_ccf[[vv]]
@@ -196,12 +208,12 @@ long_df <- cc_df %>%
   mutate(
     smooth = case_when(
       grepl("avg2", var, ignore.case = TRUE) ~ "2-year",
-      grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
+      #grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
       TRUE                                   ~ "none"
     ),
     short_var = case_when(
       grepl("avg2", var, ignore.case = TRUE) ~ gsub("_avg2", "", var, ignore.case = TRUE),
-      grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
+      #grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
       TRUE                                   ~ var
     )
   )
@@ -218,54 +230,63 @@ ggplot(long_df,
                      labels = seq(-max_lag, max_lag, 1)) +
   theme(panel.grid.minor.x = element_blank())
 
-# select top |cor| for *negative* lags (covariate leads SAM)
-best_lags <- long_df %>%
-  filter(lag <= 0) %>%
-  group_by(short_var) %>%
-  slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
+# # select top |cor| for *negative* lags (covariate leads SAM)
+# best_lags <- long_df %>%
+#   filter(lag <= 0) %>%
+#   group_by(short_var) %>%
+#   slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
 
 
 # Add chosen lagged covariates (covariate precedes SAM) ----
 model.dat3 <- fem.model.dat2 %>%
-  dplyr::select(YEAR, SAM, PMAT_5565, dplyr::any_of(best_lags$var)) %>%
+  #dplyr::select(YEAR, SAM, PMAT_5565, dplyr::any_of(best_lags$var), FEM_INST1_ABUND_avg3) %>%
   arrange(YEAR) %>%
   mutate(
-    FEM_INST1_ABUND_avg3lag2 = lag(FEM_INST1_ABUND_avg3, 2),
-    FEM_INST1_ABUND_avg3lag3 = lag(FEM_INST1_ABUND_avg3, 3),
-    FEM_MAT_ABUND_avg2lag3 = lag(FEM_MAT_ABUND_avg2, 3),
-    FEM_TOCC_lag3 = lag(FEM_TOCC, 3),
-    ICE_lag3 = lag(ICE, 3),
-    ICE_lag1 = lag(ICE,1),
-    MALE_LG_ABUND_lag1 = lag(MALE_LG_ABUND, 1)) %>%
+    SAM = log(SAM),
+    FEM_INST1_ABUND_avg2 = FEM_INST1_ABUND_avg2,
+    FEM_INST1_ABUND_avg2lag2 = lag(FEM_INST1_ABUND_avg2, 2),
+    FEM_MAT_ABUND_avg2lag2 = lag(FEM_MAT_ABUND_avg2, 2),
+    FEM_MAT_ABUND_lag3 = lag(FEM_MAT_ABUND, 3),
+    MALE_LG_ABUND_lag1 = lag(MALE_LG_ABUND, 1),
+    MALE_LG_ABUND_avg2 = MALE_LG_ABUND_avg2,
+    ICE_avg2lag5 = lag(ICE_avg2, 5),
+    ICE_avg2lag4 = lag(ICE_avg2, 4),
+    FEM_TOCC = FEM_TOCC,
+    FEM_TOCC_avg2 = FEM_TOCC_avg2) %>%
   dplyr::select(YEAR, SAM, PMAT_5565, 
-                FEM_INST1_ABUND_avg3lag2, FEM_INST1_ABUND_avg3lag3, 
-                FEM_MAT_ABUND_avg2lag3, FEM_MAT_ABUND,
-                FEM_TOCC_lag3, FEM_TOCC,
-                ICE_lag3, ICE_lag1,
-                MALE_LG_ABUND_avg2, MALE_LG_ABUND_lag1)
+                FEM_INST1_ABUND_avg2, FEM_INST1_ABUND_avg2lag2, # cohort
+                FEM_MAT_ABUND_avg2lag2,  FEM_MAT_ABUND_lag3, # mature females
+                MALE_LG_ABUND_lag1, MALE_LG_ABUND_avg2, # large males
+                ICE_avg2lag5 , ICE_avg2lag4, # ice
+                FEM_TOCC, FEM_TOCC_avg2) # temp occ
 
 # CV function ----
 k_folds <- 5
 
-cv_rmse <- function(fml, data, k_folds = 5) {
-  data <- data %>% arrange(YEAR)
+cv_rmse <- function(fml, data, k_folds = 5, min_train = 10) {
+  data <- data[order(data$YEAR), ]
   n    <- nrow(data)
-  folds <- cut(seq_len(n), breaks = k_folds, labels = FALSE)
   
-  errs <- numeric(k_folds)
+  # choose fold boundaries as contiguous blocks
+  fold_sizes <- floor((n - min_train) / k_folds)
+  if (fold_sizes < 1) stop("Not enough data for requested k_folds")
   
+  errs <- c()
   for (k in seq_len(k_folds)) {
-    test_idx  <- which(folds == k)
-    train_idx <- setdiff(seq_len(n), test_idx)
+    # training: from first row up to a moving cutoff
+    train_end <- min_train + fold_sizes * (k - 1)
+    test_end  <- train_end + fold_sizes
     
-    train_dat <- data[train_idx, , drop = FALSE]
-    test_dat  <- data[test_idx,  , drop = FALSE]
+    if (test_end > n) break
+    
+    train_dat <- data[1:train_end, , drop = FALSE]
+    test_dat  <- data[(train_end + 1):test_end, , drop = FALSE]
     
     fit_k <- gamm(
       fml,
-      data = train_dat,
-      family = gaussian(),
-      method = "REML",
+      data        = train_dat,
+      family      = gaussian(),
+      method      = "REML",
       correlation = corAR1()
     )
     
@@ -273,7 +294,7 @@ cv_rmse <- function(fml, data, k_folds = 5) {
     errs[k] <- sqrt(mean((test_dat$SAM - pred)^2, na.rm = TRUE))
   }
   
-  mean(errs)
+  mean(errs, na.rm = TRUE)
 }
 
 safe_cv_rmse <- function(fml, data, k_folds = 5) {
@@ -284,11 +305,11 @@ safe_cv_rmse <- function(fml, data, k_folds = 5) {
 # Define parameter grids on model.dat3 and run CV ----
 response <- "SAM"
 
-lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
-mat.pars   <- c(NA, names(model.dat3)[grep("MAT_ABUND",   names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
-tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
-ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
+lg.pars   <- c(names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
+mat.pars   <- c(names(model.dat3)[grep("MAT_ABUND",   names(model.dat3))])
+sm.pars   <- c(names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
+tocc.pars <- c(names(model.dat3)[grep("TOCC",       names(model.dat3))])
+ice.pars  <- c(names(model.dat3)[grep("ICE",        names(model.dat3))])
 
 combos <- tidyr::expand_grid(
   ice  = ice.pars,
@@ -354,14 +375,17 @@ fits <- purrr::pmap_dfr(
 )
 
 # fit best model ----
-fits %>% arrange(cv_rmse, AIC)
+fits %>% arrange(cv_rmse, AIC) -> pp
+pp[2,]
 
 # fit model
 mod <- gamm(
-  SAM ~ s(FEM_INST1_ABUND_avg3lag2, k = 4) +
-    s(FEM_MAT_ABUND_avg2lag3,    k = 4)+
-    #s(FEM_TOCC_lag3, k = 4)+
-    s(ICE_lag1, k = 4),
+  SAM ~ s(FEM_INST1_ABUND_avg2lag2, k = 4) +
+    s(FEM_MAT_ABUND_lag3, k = 4)+
+    s(MALE_LG_ABUND_avg2, k =4)+
+    s(ICE_avg2lag5, k = 4)+
+    s(FEM_TOCC, k = 4), 
+    #s(YEAR),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian()
@@ -376,7 +400,7 @@ diagnose.gamm(mod)
 response <- "PMAT_5565"
 
 dat_ccf <- fem.model.dat2
-vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "MATURE", "IMMATURE")]
+vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "MATURE", "IMMATURE", "TOT_CRAB")]
 cc_df   <- data.frame()
 
 for (vv in vars) {
@@ -404,12 +428,12 @@ long_df <- cc_df %>%
   dplyr::mutate(
     smooth = dplyr::case_when(
       grepl("avg2", var, ignore.case = TRUE) ~ "2-year",
-      grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
+      #grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
       TRUE                                   ~ "none"
     ),
     short_var = dplyr::case_when(
       grepl("avg2", var, ignore.case = TRUE) ~ gsub("_avg2", "", var, ignore.case = TRUE),
-      grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
+      #grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
       TRUE                                   ~ var
     )
   )
@@ -426,82 +450,110 @@ ggplot(long_df,
                      labels = seq(-max_lag, max_lag, 1)) +
   theme(panel.grid.minor.x = element_blank())
 
-best_lags <- long_df %>%
-  dplyr::filter(lag <= 0) %>%
-  dplyr::group_by(short_var) %>%
-  dplyr::slice_max(order_by = abs(cor), n = 2, with_ties = FALSE) %>%
-  dplyr::ungroup()
 
-## 2. Build modeling dataset with chosen lags ---------------------
-
+# Add chosen lagged covariates (covariate precedes SAM) ----
 model.dat3 <- fem.model.dat2 %>%
-  dplyr::select(YEAR, PMAT_5565, dplyr::any_of(best_lags$var)) %>%
-  dplyr::arrange(YEAR) %>%
-  dplyr::mutate(
-    FEM_INST1_ABUND_avg2lag3      = dplyr::lag(FEM_INST1_ABUND_avg2,        3),
-    FEM_MAT_ABUND_lag3        = dplyr::lag(FEM_MAT_ABUND_avg2,     3),
-    FEM_MAT_ABUND_avg2lag2    = dplyr::lag(FEM_MAT_ABUND_avg2,     2),
-    FEM_TOCC_lag1             = dplyr::lag(FEM_TOCC,               1),
-    ICE_avg3lag3              = dplyr::lag(ICE_avg3,               3),
-    ICE_avg3lag2              = dplyr::lag(ICE_avg3,               2),
-    MALE_LG_ABUND_avg3lag3    = dplyr::lag(MALE_LG_ABUND_avg3,     3),
-    MALE_LG_ABUND_avg3lag2    = dplyr::lag(MALE_LG_ABUND_avg3,     2)
+  arrange(YEAR) %>%
+  mutate(
+    SAM = log(SAM),
+    FEM_INST1_ABUND_avg2    = FEM_INST1_ABUND_avg2,
+    FEM_INST1_ABUND_avg2lag2 = lag(FEM_INST1_ABUND_avg2, 2),
+    FEM_INST1_ABUND_avg2lag1 = lag(FEM_INST1_ABUND_avg2, 1),
+    FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
+    FEM_MAT_ABUND_lag3      = lag(FEM_MAT_ABUND, 3),
+    MALE_LG_ABUND_lag1      = lag(MALE_LG_ABUND, 1),
+    MALE_LG_ABUND_avg2      = MALE_LG_ABUND_avg2,
+    MALE_LG_ABUND_avg2lag1 =  lag(MALE_LG_ABUND_avg2, 1),
+    ICE_avg2lag5            = lag(ICE_avg2, 5),
+    ICE_avg2lag4            = lag(ICE_avg2, 4),
+    FEM_TOCC                = FEM_TOCC,
+    FEM_TOCC_avg2           = FEM_TOCC_avg2,
+    TOTAL_5565              = MATURE + IMMATURE
   ) %>%
   dplyr::select(
-    YEAR, PMAT_5565,
-    FEM_INST1_ABUND_avg2lag3, FEM_INST1_ABUND,
-    FEM_MAT_ABUND_lag3,   FEM_MAT_ABUND_avg2lag2,
-    FEM_TOCC_lag1,        FEM_TOCC_avg3,
-    ICE_avg3lag3,         ICE_avg3lag2,
-    MALE_LG_ABUND_avg3lag3, MALE_LG_ABUND_avg3lag2
+    YEAR, SAM,
+    PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
+    FEM_INST1_ABUND_avg2, FEM_INST1_ABUND_avg2lag2, FEM_INST1_ABUND_avg2lag1,
+    FEM_MAT_ABUND_avg2lag2, FEM_MAT_ABUND_lag3,
+    MALE_LG_ABUND_lag1, MALE_LG_ABUND_avg2,  MALE_LG_ABUND_avg2lag1,
+    ICE_avg2lag5, ICE_avg2lag4,
+    FEM_TOCC, FEM_TOCC_avg2
   )
 
 ## 3. CV function for Beta GAM on PMAT_5565 ------------------
-
 k_folds <- 5
 
-cv_rmse <- function(fml, data, k_folds = 5) {
-  data  <- dplyr::arrange(data, YEAR)
-  n     <- nrow(data)
-  folds <- cut(seq_len(n), breaks = k_folds, labels = FALSE)
+ts_cv_rmse <- function(fml, data, k_folds = 5, min_train = 10) {
+  data <- data[order(data$YEAR), ]
+  n    <- nrow(data)
   
-  errs <- numeric(k_folds)
+  fold_size <- floor((n - min_train) / k_folds)
+  if (fold_size < 1) stop("Not enough data for requested k_folds")
+  
+  errs <- rep(NA_real_, k_folds)
   
   for (k in seq_len(k_folds)) {
-    test_idx  <- which(folds == k)
-    train_idx <- setdiff(seq_len(n), test_idx)
+    train_end <- min_train + fold_size * (k - 1)
+    test_end  <- train_end + fold_size
+    if (test_end > n) break
     
-    train_dat <- data[train_idx, , drop = FALSE]
-    test_dat  <- data[test_idx,  , drop = FALSE]
+    train_dat <- data[1:train_end, , drop = FALSE]
+    test_dat  <- data[(train_end + 1):test_end, , drop = FALSE]
     
-    fit_k <- gam(
-      fml,
-      data   = train_dat,
-      family = betar(link = "logit"),  # PMAT_5565 must be in (0,1)
-      method = "REML"
+    # drop rows with zero total to avoid 0/0 proportions
+    train_dat <- subset(train_dat, TOTAL_5565 > 0)
+    test_dat  <- subset(test_dat,  TOTAL_5565 > 0)
+    if (nrow(train_dat) < 5 || nrow(test_dat) < 1) next
+    
+    fit_k <- try(
+      gam(
+        cbind(MATURE, TOTAL_5565 - MATURE) ~ .,
+        data   = transform(train_dat, ..y.. = NULL), # formula will be replaced below
+        family = quasibinomial(link = "logit"),
+        method = "REML"
+      ),
+      silent = TRUE
     )
+    # Replace formula in fit_k call with fml:
+    if (!inherits(fit_k, "gam")) {
+      fit_k <- try(
+        gam(
+          formula = fml,
+          data    = train_dat,
+          family  = quasibinomial(link = "logit"),
+          method  = "REML"
+        ),
+        silent = TRUE
+      )
+    }
+    if (inherits(fit_k, "try-error")) next
     
-    p_hat <- predict(fit_k, newdata = test_dat, type = "response")
+    # Predict proportions
+    p_hat <- try(
+      predict(fit_k, newdata = test_dat, type = "response"),
+      silent = TRUE
+    )
+    if (inherits(p_hat, "try-error")) next
+    
     errs[k] <- sqrt(mean((test_dat$PMAT_5565 - p_hat)^2, na.rm = TRUE))
   }
   
-  mean(errs)
+  mean(errs, na.rm = TRUE)
 }
 
 safe_cv_rmse <- function(fml, data, k_folds = 5) {
-  out <- try(cv_rmse(fml, data = data, k_folds = k_folds), silent = TRUE)
-  if (inherits(out, "try-error")) NA_real_ else out
+  if (sum(!is.na(data$PMAT_5565)) < 15) return(NA_real_)
+  out <- try(ts_cv_rmse(fml, data = data, k_folds = k_folds), silent = TRUE)
+  if (inherits(out, "try-error") || is.nan(out)) NA_real_ else out
 }
-
 ## 4. Grid of candidate covariate terms ---------------------------
+response_counts <- "cbind(MATURE, TOTAL_5565 - MATURE)"
 
-response <- "PMAT_5565"
-
-lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
-mat.pars  <- c(NA, names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
-tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
-ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
+lg.pars   <- names(model.dat3)[grep("LG_ABUND",   names(model.dat3))]
+mat.pars  <- names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))]
+sm.pars   <- names(model.dat3)[grep("INST1_ABUND",names(model.dat3))]
+tocc.pars <- names(model.dat3)[grep("TOCC",       names(model.dat3))]
+ice.pars  <- names(model.dat3)[grep("ICE",        names(model.dat3))]
 
 combos <- tidyr::expand_grid(
   ice  = ice.pars,
@@ -514,24 +566,25 @@ combos <- tidyr::expand_grid(
 
 safe_gam <- purrr::safely(gam)
 
-fits<- purrr::pmap_dfr(
+fits <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc, mat) {
     
     terms <- c(
-      if (!is.na(lg))   paste0("s(", lg,   ",k=4)") else NULL,
-      if (!is.na(sm))   paste0("s(", sm,   ",k=4)") else NULL,
-      if (!is.na(tocc)) paste0("s(", tocc, ",k=4)") else NULL,
-      if (!is.na(ice))  paste0("s(", ice,  ",k=4)") else NULL,
-      if (!is.na(mat))  paste0("s(", mat,  ",k=4)") else NULL
+      if (!is.na(lg))   paste0("s(", lg,   ", k = 4, bs = 'cs')") else NULL,
+      if (!is.na(sm))   paste0("s(", sm,   ", k = 4, bs = 'cs')") else NULL,
+      if (!is.na(tocc)) paste0("s(", tocc, ", k = 4, bs = 'cs')") else NULL,
+      if (!is.na(ice))  paste0("s(", ice,  ", k = 4, bs = 'cs')") else NULL,
+      if (!is.na(mat))  paste0("s(", mat,  ", k = 4, bs = 'cs')") else NULL
     )
     
-    fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
+    rhs <- if (length(terms) == 0) "1" else paste(terms, collapse = " + ")
+    fml <- as.formula(paste(response_counts, "~", rhs))
     
     fit <- safe_gam(
       fml,
-      data   = model.dat3,
-      family = betar(link = "logit"),
+      data   = subset(model.dat3, TOTAL_5565 > 0),
+      family = quasibinomial(link = "logit"),
       method = "REML"
     )
     
@@ -568,18 +621,40 @@ fits<- purrr::pmap_dfr(
     )
   }
 )
+
+
 # fit best model ----
-fits %>% arrange(cv_rmse, AIC)
+fits %>% arrange(cv_rmse, GCV) -> pp
+pp[1,4]
 
 # fit model
 mod <- gam(
-  PMAT_5565 ~ 
-    s(FEM_INST1_ABUND,         k = 4) +
-    s(MALE_LG_ABUND_avg3lag3, k = 4)+
-    s(FEM_TOCC_lag1, k = 4),
-  data        = model.dat3,
-  family      = betar(link = "logit"),
+  cbind(MATURE, IMMATURE) ~ 
+    s(FEM_INST1_ABUND_avg2lag1, k = 4) +
+    s(FEM_MAT_ABUND_avg2lag2, k = 4) +
+    s(MALE_LG_ABUND_avg2, k =4) + 
+    s(ICE_avg2lag5, k = 4)+
+    s(FEM_TOCC, k = 4),
+  data   = subset(model.dat3, MATURE + IMMATURE > 0),
+  family = quasibinomial(link = "logit"),
+  method = "REML"
 )
 
+gam.check(mod)
 
-diagnose(mod)
+# plot facetted smooths
+sm.dat <- smooth_estimates(mod) %>%
+  pivot_longer(., cols = 6:ncol(.), names_to = "resp", values_to = "value")
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  facet_wrap(~ .smooth, scales = "free_x", ncol = 2) +   # facet by smooth term name
+  theme_bw()+
+  ylab("Partial effect")+
+  xlab("Value")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14))
+
+

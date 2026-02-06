@@ -83,7 +83,7 @@ write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
 # FEMALES
 # use crabpack to calculate zero-filled, per-station mature CPUE
 cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW", 
-                            size_min = 35, size_max = NULL,  sex = "female")  #filtering for relevant range of SAM crab
+                            size_min = 30, size_max = NULL,  sex = "female")  #filtering for relevant range of SAM crab
 
 
 #Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
