@@ -29,7 +29,27 @@ readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
          SAMPLING_FACTOR = SAMPLING_FACTOR/SEL) %>%
   filter(YEAR %in% model$data$YEAR) -> sub1
 
+mat <- sub1 %>% 
+        mutate(MATURE = case_when(CLUTCH_SIZE == 0 ~ 0,
+                                  TRUE ~ 1)) %>%
+      group_by(YEAR, SIZE_5MM) %>%
+      reframe(TOT = sum(SAMPLING_FACTOR),
+              N = n(),
+              TOT_MAT = sum(SAMPLING_FACTOR[MATURE == 1]),
+              PROP_MATURE = TOT_MAT/TOT)
 
+ggplot(mat, aes(SIZE_5MM, PROP_MATURE))+
+  geom_line()+
+  facet_wrap(~YEAR)+
+  theme_bw()
+
+ggplot()+
+  geom_bar(mat, mapping = aes(SIZE_5MM, N), stat = "identity")+
+  facet_wrap(~YEAR)+
+  theme_bw()
+
+
+# Simulate model response
 pmat.sim <- predict(model, sub1, type = "response")
 
 
@@ -47,12 +67,11 @@ ogives <- pmat.sim %>%
 
 # Plot
 ggplot(ogives, aes(SIZE_5MM, PROP_MATURE))+
-  geom_line()+
+  geom_line(linewidth = 1)+
   facet_wrap(~YEAR)+
-  theme_bw()+
-  geom_rug()
+  theme_bw()
 
-#write.csv(ogives, "./Maturity research/SNOW_femaleSAM.csv")
+ggsave("./Maturity research/Figures/SNOW_femaleogives.png", width = 8, height = 7)
 
 
 # SAM ----

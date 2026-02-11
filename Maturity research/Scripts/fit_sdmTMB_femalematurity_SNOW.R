@@ -217,3 +217,104 @@ mod.300spvar <-  sdmTMB(MATURE ~ s(SIZE, k = 13) + YEAR_SCALED,
 
 saveRDS(mod.300spvar, "./Maturity research/Models/snowfemale_sdmTMB_spVAR_k300.rda")
 
+# DIAGNOSTICS ----
+# function
+plot.resids <- function(model, model_name){
+  resids <- simulate(model, nsim = 300, type= "mle-mvn")|>
+    dharma_residuals(model, return_DHARMa = TRUE)
+  
+  dat <- cbind(model$data, DHARMa_resid = resids$scaledResiduals)
+  
+  rr_yr  <- dat %>%
+    group_by(YEAR) %>%
+    arrange(DHARMa_resid, .by_group = TRUE) %>%
+    mutate(
+      n = n(),
+      expected = ppoints(n),         # uniform quantiles
+      observed = sort(DHARMa_resid)  # sort residuals for QQ
+    ) %>%
+    ungroup() %>%
+    mutate(model = model_name)
+  
+  #  QQ plot with ggplot2
+  ggplot()+
+    theme_bw()+
+    geom_point(rr_yr, mapping = aes(expected, observed), size = 1, fill = "black")+ #theoretical uniform quantiles vs. empirical residual quantiles
+    geom_abline(slope = 1, intercept = 0, color = "red", linewidth = 1)+
+    ylab("observed")+
+    xlab("expected")+
+    facet_wrap(~YEAR)+
+    scale_x_continuous(breaks = c(0, 0.5, 1))+
+    scale_y_continuous(breaks = c(0, 0.5, 1))+
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12),
+          strip.text = element_text(size = 12)) +
+    ggtitle(model_name) -> by_yr
+  
+  rr_size <- dat %>%
+    group_by(SIZE_5MM) %>%
+    arrange(DHARMa_resid, .by_group = TRUE) %>%
+    mutate(
+      n = n(),
+      expected = ppoints(n),         # uniform quantiles
+      observed = sort(DHARMa_resid)  # sort residuals for QQ
+    ) %>%
+    ungroup() %>%
+    mutate(model = model_name)
+  
+  #  QQ plot with ggplot2
+  ggplot()+
+    theme_bw()+
+    geom_point(rr_size, mapping = aes(expected, observed), size = 1, fill = "black")+ #theoretical uniform quantiles vs. empirical residual quantiles
+    geom_abline(slope = 1, intercept = 0, color = "red", linewidth = 1)+
+    ylab("observed")+
+    xlab("expected")+
+    facet_wrap(~SIZE_5MM)+
+    scale_x_continuous(breaks = c(0, 0.5, 1))+
+    scale_y_continuous(breaks = c(0, 0.5, 1))+
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12),
+          strip.text = element_text(size = 12)) +
+    ggtitle(model_name) -> by_size
+  
+  dat2 <- dat %>%
+    group_by(STATION_ID) %>%
+    mutate(LONGITUDE = mean(LONGITUDE), LATITUDE = mean(LATITUDE)) %>%
+    ungroup()
+  
+  ggplot(dat2, aes(LONGITUDE, LATITUDE, fill = DHARMa_resid))+
+    geom_point(shape = 21, size = 1.75, stroke = NA)+
+    facet_wrap(~YEAR)+
+    scale_fill_gradient2(midpoint = 0.5)+
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.direction = "horizontal",
+          strip.text = element_text(size = 10)) +
+    ggtitle(model_name) -> by_yr_sp
+  
+  ggsave(paste0("./Maturity research/Figures/snowfemale_", model_name, "spatialDHARMa_byYEAR.png"), width = 10, height = 9)
+  
+  
+  ggplot(dat2, aes(LONGITUDE, LATITUDE, fill = DHARMa_resid))+
+    geom_point(shape = 21, size = 1.75, stroke = NA)+
+    facet_wrap(~SIZE_5MM)+
+    scale_fill_gradient2(midpoint = 0.5)+
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.direction = "horizontal",
+          strip.text = element_text(size = 10)) +
+    ggtitle(model_name)-> by_size_sp
+  
+  ggsave(paste0("./Maturity research/Figures/snowfemale_", model_name, "spatialDHARMa_bySIZE.png"), width = 10, height = 9)
+  
+  return(list(by_yr = by_yr, by_size = by_size, by_yr_sp = by_yr_sp, by_size_sp = by_size_sp,
+              rr_yr = rr_yr, rr_size = rr_size))
+}
+
+
+# Run function
+model <- readRDS("./Maturity research/Models/snowfemale_sdmTMB_spVAR_k300.rda")
+
+model_name <- "snowfem_spVAR_k300"
+
+plot.resids(model, model_name) -> out
