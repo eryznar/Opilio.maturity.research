@@ -31,7 +31,7 @@ ice.years <- 2014:2025
     "month" = sprintf("%02d", 1:12),
     "day" = sprintf("%02d", 1:31),
     "time" = sprintf("%02d:00", 0:23),
-    "area" = c(64, -182, 50, -160),      "format" = "netcdf",                  
+    "area" = c(64, -182, 50, -154),      "format" = "netcdf",                  
     "target" = paste0("ERA5_ice_", min(ice.years), "-", max(ice.years), ".nc") # target file name
   )
   
@@ -54,7 +54,7 @@ ice.years <- 2014:2025
  for(ii in 1:length(ice.files)){
    # Process ice data using tidync()
    tidync(paste0("./Maturity research/Data/", ice.files[ii])) %>%
-     hyper_filter(longitude = longitude >= -182 & longitude <= -160,
+     hyper_filter(longitude = longitude >= -182 & longitude <= -154,
                   latitude = latitude >= 50 & latitude <= 64) %>%
      activate("siconc") %>%
      hyper_tibble() %>%
@@ -103,4 +103,20 @@ ice.years <- 2014:2025
   # Save
   write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"), row.names = FALSE)
   write.csv(spatial.ice.dat, paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
+  
+  region_layers$survey.area -> pp
+  ice <- read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") %>%
+          st_as_sf(., coords = c("longitude", "latitude"), crs = crs.latlon) %>%
+          st_transform(., st_crs(pp)) %>%
+          st_intersection(., pp)
+  
+  
+  ebs.ice <- ice %>%
+            na.omit() %>%
+            as.data.frame() %>%
+            group_by(year) %>%
+            reframe(value = mean(value))
+  
+  write.csv(ebs.ice, paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
+  
   
