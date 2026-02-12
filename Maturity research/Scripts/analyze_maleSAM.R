@@ -84,46 +84,6 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
 spec.dat.mat <- readRDS("./Maturity research/Data/sdmTMB_maturespecdat.csv") # already accounts for selectivity
 
 
-# Mature abundance >=101 SH2
-mat.dat.sel <- spec.dat
-mat.dat.sel$specimen <- spec.dat.mat %>%
-  dplyr::select(!SAMPLING_FACTOR) %>% # removing original SF
-  rename(SAMPLING_FACTOR = SAMPLING_FACTOR_MATURE) # renaming mature SF to SF so crabpack recognizes, this accounts for sel
-
-ind.pref <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW", 
-                                                  size_min = 101, size_max = NULL,  sex = "male", 
-                                                  shell_condition = c("new_hardshell")) %>%
-  group_by(YEAR) %>%
-  reframe(IND_PREF = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, IND_PREF) 
-
-# All mature abundance SH2
-mat.dat.sel <- spec.dat
-mat.dat.sel$specimen <- spec.dat.mat %>%
-  dplyr::select(!SAMPLING_FACTOR) %>% # removing original SF
-  rename(SAMPLING_FACTOR = SAMPLING_FACTOR_MATURE) # renaming mature SF to SF so crabpack recognizes, this accounts for sel
-
-all.mat <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW", 
-                                     size_min = NULL, size_max = NULL,  sex = "male", 
-                                     shell_condition = c("new_hardshell")) %>%
-  group_by(YEAR) %>%
-  reframe(ALL_MAT = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, ALL_MAT) 
-
-all.mat$PROP_INDPREF <- ind.pref$IND_PREF/all.mat$ALL_MAT
-
-all.mat %>% 
-  filter(YEAR >= 1989) %>%
-  full_join(., data.frame(YEAR = 2020)) -> all.mat2
-
-ggplot(all.mat2, aes(YEAR, PROP_INDPREF))+
-  geom_line()+
-  geom_point()+
-  theme_bw()
-
-ggsave("./Maturity research/Figures/SNOW_male_propindpref.png", width = 9, height = 7)
-
-
 # Immature abundance
 mat.dat.sel <- spec.dat
 mat.dat.sel$specimen <- spec.dat.mat %>%
@@ -212,7 +172,7 @@ unique(is.na(abund.dat))
 
 
 # Bind with SAM
-SAM.abund = right_join(SAM.dat, abund.dat)
+SAM.abund <- right_join(SAM.dat, abund.dat) 
 
 unique(is.na(SAM.abund)) # SAM should have NAs in years where no chela were measured
 unique(SAM.abund[is.na(SAM.abund$SAM) == TRUE,]$YEAR) #2008, 2012, 2014, 2016
@@ -328,6 +288,9 @@ ggplot(long_df,
                      labels = seq(-max_lag, max_lag, 1)) +
   theme(panel.grid.minor.x = element_blank())
 
+ggsave("./Maturity research/Figures/SNOW_male_SAM_ccf.png", width = 8, height = 7)
+
+
 ## ------------------------------------------------------------
 ## 4) Add chosen lagged covariates (covariate precedes SAM)
 ## ------------------------------------------------------------
@@ -386,7 +349,7 @@ k_folds <- 5
 cv_rmse <- function(fml,
                     data,
                     k_folds   = 5,   # kept for interface compatibility, not used
-                    min_train = 10,
+                    min_train = 8,
                     gap       = 1,   # interpreted as forecast horizon h
                     ...) {
   
@@ -430,7 +393,7 @@ safe_cv_rmse <- function(fml,
                          data,
                          k_folds   = 5,
                          gap       = 1,
-                         min_train = 10) {
+                         min_train = 8) {
   out <- try(
     cv_rmse(
       fml,
@@ -535,22 +498,24 @@ fits_ranked <- fits %>%
   ) %>%
   # define \"neighborhood\" criteria
   mutate(
-    keep_AIC  = dAIC <= 4,          # or <= 2 for stricter AIC selection
-    keep_RMSE = dRMSE <= rmse_sd    # \"small\" = within 1 SD of best RMSE
+    keep_RMSE = dRMSE <= 2 * rmse_sd,   # main criterion
   ) %>%
-  # keep models that are good by at least one criterion
-  filter(keep_AIC | keep_RMSE) %>%
+  filter(keep_RMSE, dAIC <= 4) %>%     # drop only clearly bad AIC %>%
   # rank them
-  arrange(AIC, cv_rmse)
+  arrange(cv_rmse, AIC)
 
-fits_ranked %>%
-  filter(keep_AIC == TRUE & keep_RMSE == TRUE)
+
+fits_ranked
+
+write.csv(fits_ranked, "./Maturity research/Output/SNOW_male_SAM_modelselection.csv")
+
+read.csv("./Maturity research/Output/SNOW_male_SAM_modelselection.csv")
 
 # fit model
 mod <- gamm(
   SAM ~ s(INST1_ABUND, k = 4) +
     s(LG_ABUND_avg2,    k = 4),
-    #s(ICE_avg2, k = 5),
+    #s(ICE, k = 4),
     #s(TOCC_avg2, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
@@ -559,76 +524,384 @@ mod <- gamm(
 
 diagnose.gamm(mod)
 
+# PROP_INDUSTRY PREFERRED ----
+# Mature abundance >=101 SH2
+mat.dat.sel <- spec.dat
+mat.dat.sel$specimen <- spec.dat.mat %>%
+  dplyr::select(!SAMPLING_FACTOR) %>% # removing original SF
+  rename(SAMPLING_FACTOR = SAMPLING_FACTOR_MATURE) # renaming mature SF to SF so crabpack recognizes, this accounts for sel
 
-# Plot interaction surface
-mod1 <- gamm(
-  SAM ~ s(INST1_ABUND_avg2,LG_ABUND_avg3lag5, k = 4) +
-    s(TOCC, k = 4),
-  correlation = corAR1(),
-  data        = model.dat3,
-  family      = gaussian()
-)
+ind.pref <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW", 
+                                     size_min = 101, size_max = NULL,  sex = "male", 
+                                     shell_condition = c("new_hardshell")) %>%
+  group_by(YEAR) %>%
+  reframe(IND_PREF = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, IND_PREF) 
 
-g1 <- mod1$gam
+# All mature abundance SH2
+mat.dat.sel <- spec.dat
+mat.dat.sel$specimen <- spec.dat.mat %>%
+  dplyr::select(!SAMPLING_FACTOR) %>% # removing original SF
+  rename(SAMPLING_FACTOR = SAMPLING_FACTOR_MATURE) # renaming mature SF to SF so crabpack recognizes, this accounts for sel
 
-# grid over observed range
-newdat <- expand.grid(
-  INST1_ABUND_avg2   = seq(min(model.dat3$INST1_ABUND_avg2, na.rm = TRUE),
-                           max(model.dat3$INST1_ABUND_avg2, na.rm = TRUE),
-                           length = 50),
-  LG_ABUND_avg3lag5  = seq(min(model.dat3$LG_ABUND_avg3lag5, na.rm = TRUE),
-                           max(model.dat3$LG_ABUND_avg3lag5, na.rm = TRUE),
-                           length = 50)
-)
+all.mat <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW", 
+                                    size_min = NULL, size_max = NULL,  sex = "male", 
+                                    shell_condition = c("new_hardshell")) %>%
+  group_by(YEAR) %>%
+  reframe(ALL_MAT = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ALL_MAT) 
 
-# hold TOCC at its mean (or another value)
-newdat$TOCC <- mean(model.dat3$TOCC, na.rm = TRUE)
+all.mat$PROP_INDPREF <- ind.pref$IND_PREF/all.mat$ALL_MAT
 
-# predict partial effect of the interaction term
-# type = "terms" returns contributions of each smooth
-p <- predict(g1, newdata = newdat, type = "terms", se.fit = TRUE)
+all.mat %>% 
+  filter(YEAR >= 1989) %>%
+  full_join(., data.frame(YEAR = 2020)) -> all.mat2
 
-# column name for the bivariate smooth term
-int_name <- "s(INST1_ABUND_avg2,LG_ABUND_avg3lag5)"
-
-newdat$fit_int <- p$fit[, int_name]
-
-ggplot(newdat,
-       aes(INST1_ABUND_avg2, LG_ABUND_avg3lag5, fill = fit_int)) +
-  geom_raster() +
-  scale_fill_viridis_c(name = "Partial effect") +
-  library(dplyr)
-library(ggplot2)
-
-g1 <- mod1$gam
-
-# grid over observed range
-newdat <- expand.grid(
-  INST1_ABUND_avg2   = seq(min(model.dat3$INST1_ABUND_avg2, na.rm = TRUE),
-                           max(model.dat3$INST1_ABUND_avg2, na.rm = TRUE),
-                           length = 50),
-  LG_ABUND_avg3lag5  = seq(min(model.dat3$LG_ABUND_avg3lag5, na.rm = TRUE),
-                           max(model.dat3$LG_ABUND_avg3lag5, na.rm = TRUE),
-                           length = 50)
-)
-
-# hold TOCC at its mean (or another value)
-newdat$TOCC <- mean(model.dat3$TOCC, na.rm = TRUE)
-
-# predict partial effect of the interaction term
-# type = "terms" returns contributions of each smooth
-p <- predict(g1, newdata = newdat, type = "terms", se.fit = TRUE)
-
-# column name for the bivariate smooth term
-int_name <- "s(INST1_ABUND_avg2,LG_ABUND_avg3lag5)"
-
-newdat$fit_int <- p$fit[, int_name]
-
-ggplot(newdat,
-       aes(INST1_ABUND_avg2, LG_ABUND_avg3lag5)) +
-  geom_raster(aes(fill = fit_int)) +
-  geom_contour(aes(z = fit_int), color = "black", alpha = 0.6) +
-  scale_fill_viridis_c(name = "Partial effect") +
-  labs(x = "INST1_ABUND_avg2",
-       y = "LG_ABUND_avg3lag5") +
+ggplot(all.mat2, aes(YEAR, PROP_INDPREF))+
+  geom_line()+
+  geom_point()+
   theme_bw()
+
+ggsave("./Maturity research/Figures/SNOW_male_propindpref.png", width = 9, height = 7)
+
+
+indpref.dat <- right_join(ind.pref, all.mat) %>%
+                  filter(YEAR >= 1989) %>%
+               right_join(model.dat %>% dplyr::select(!SAM))
+
+ggplot(indpref.dat, aes(YEAR, PROP_INDPREF))+
+  geom_line()+
+  geom_point()+
+  theme_bw()
+
+M <- cor(indpref.dat %>% dplyr::select(!c(YEAR, IND_PREF, ALL_MAT, PROP_INDPREF)), use = "pairwise.complete.obs", method = "pearson")
+corrplot::corrplot(M,
+                   type = "upper",
+                   method = "square",
+                   order  = "hclust",      # cluster variables
+                   addCoef.col = "black") 
+
+
+# Evaluate lags ----
+max_lag <- 3
+
+model.dat2 <- indpref.dat %>%
+  arrange(YEAR) %>%
+  mutate(
+    # 2‑ and 3‑year running means
+    ICE_avg2        = zoo::rollmean(ICE,         k = 2, fill = NA, align = "right"),
+    #ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
+    INST1_ABUND_avg2= zoo::rollmean(INST1_ABUND, k = 2, fill = NA, align = "right"),
+    #INST1_ABUND_avg3= zoo::rollmean(INST1_ABUND, k = 3, fill = NA, align = "right"),
+    LG_ABUND_avg2   = zoo::rollmean(LG_ABUND,    k = 2, fill = NA, align = "right"),
+    #LG_ABUND_avg3   = zoo::rollmean(LG_ABUND,    k = 3, fill = NA, align = "right"),
+    TOCC_avg2       = zoo::rollmean(TOCC,        k = 2, fill = NA, align = "right"),
+    #TOCC_avg3       = zoo::rollmean(TOCC,        k = 3, fill = NA, align = "right")
+  )
+
+## ------------------------------------------------------------
+## 3) CCF diagnostics
+## ------------------------------------------------------------
+dat_ccf <- model.dat2
+vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "PROP_INDPREF", "ALL_MAT", "IND_PREF")]
+cc_df   <- data.frame()
+
+for (vv in vars) {
+  pp <- dat_ccf[[vv]]
+  
+  ok <- complete.cases(dat_ccf$PROP_INDPREF, pp)
+  if (sum(ok) < 2) next   # only need enough paired data for CCF
+  
+  pind_ok <- dat_ccf$PROP_INDPREF[ok]
+  pp_ok  <- pp[ok]
+  
+  # CCF on original (non pre-whitened) series: covariate first, response second
+  cc <- ccf(pp_ok, pind_ok, lag.max = max_lag, plot = FALSE)
+  
+  df <- data.frame(
+    var = vv,
+    lag = as.numeric(cc$lag),
+    cor = as.numeric(cc$acf)
+  )
+  
+  cc_df <- rbind(cc_df, df)
+}
+
+# Tag running‑mean variants
+long_df <- cc_df %>%
+  mutate(
+    smooth = case_when(
+      grepl("avg2", var, ignore.case = TRUE) ~ "2-year",
+      grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
+      TRUE                                   ~ "none"
+    ),
+    short_var = case_when(
+      grepl("avg2", var, ignore.case = TRUE) ~ gsub("_avg2", "", var, ignore.case = TRUE),
+      grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
+      TRUE                                   ~ var
+    )
+  )
+
+# Plot
+ggplot(long_df,
+       aes(lag, cor, fill = factor(smooth, levels = c("none", "2-year", "3-year")))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("cadetblue", "salmon", "darkgoldenrod"), name = "smooth") +
+  facet_wrap(~ short_var) +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(-max_lag, max_lag, 1),
+                     labels = seq(-max_lag, max_lag, 1)) +
+  theme(panel.grid.minor.x = element_blank())
+
+ggsave("./Maturity research/Figures/SNOW_male_indpref_ccf.png", width = 8, height = 7)
+
+## ------------------------------------------------------------
+## 4) Add chosen lagged covariates (covariate precedes SAM)
+## ------------------------------------------------------------
+model.dat3 <- model.dat2 %>%
+  arrange(YEAR) %>%
+  mutate(
+    #SAM = log(SAM),
+    
+    INST1_ABUND = INST1_ABUND, # hard coding to lag0, no avg
+    
+    LG_ABUND_lag1  = lag(LG_ABUND, 1),
+    #LG_ABUND_lag1 = lag(LG_ABUND, 1),
+    #LG_ABUND_lag2 = lag(LG_ABUND, 2),
+    LG_ABUND_avg2    = LG_ABUND_avg2,
+    #LG_ABUND_avg2lag1  = lag(LG_ABUND_avg2, 1),
+    #LG_ABUND_avg2lag2  = lag(LG_ABUND_avg2, 2),
+    
+    ICE  = ICE,
+    #ICE_lag1 = lag(ICE, 1),
+    #ICE_lag2 = lag(ICE, 2),
+    ICE_avg2    = ICE_avg2,
+    #ICE_avg2lag1  = lag(ICE_avg2, 1),
+    #ICE_avg2lag2  = lag(ICE_avg2, 2),
+    
+    TOCC_lag1  = lag(TOCC, 1),
+    #TOCC_lag1 = lag(TOCC, 1),
+    #TOCC_lag2 = lag(TOCC, 2),
+    TOCC_avg2lag1    = lag(TOCC_avg2,1)
+    #TOCC_avg2lag1  = lag(TOCC_avg2, 1),
+    #TOCC_avg2lag2  = lag(TOCC_avg2, 2),
+    
+  ) %>%
+  dplyr::select(
+    YEAR, PROP_INDPREF, ALL_MAT, IND_PREF,
+    
+    INST1_ABUND,
+    
+    LG_ABUND_lag1, LG_ABUND_avg2,
+    #LG_ABUND_avg2lag2, 
+    #LG_ABUND_lag1, LG_ABUND_lag2, 
+    
+    ICE, ICE_avg2,
+    #ICE_lag1, ICE_lag2, ICE_avg2lag2,
+    
+    TOCC_lag1, TOCC_avg2lag1,
+    #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
+  )
+
+
+
+## ------------------------------------------------------------
+## 5) CV function
+## ------------------------------------------------------------
+k_folds <- 5   # kept for interface compatibility
+
+cv_rmse <- function(fml,
+                    data,
+                    k_folds   = 5,   # ignored
+                    min_train = 8,
+                    gap       = 1) { # forecast horizon h
+  
+  data <- data[order(data$YEAR), ]
+  data <- subset(data, ALL_MAT > 0)
+  n    <- nrow(data)
+  
+  h <- gap
+  
+  last_origin <- n - h
+  if (last_origin <= min_train) {
+    stop("Not enough data for requested min_train / gap (h).")
+  }
+  
+  errs <- c()
+  
+  for (origin in seq.int(min_train, last_origin)) {
+    train_dat <- data[1:origin, , drop = FALSE]
+    test_dat  <- data[(origin + 1):(origin + h), , drop = FALSE]
+    
+    # quasibinomial GAM on counts
+    fit_k <- gam(
+      fml,
+      data   = train_dat,
+      family = quasibinomial(link = "logit"),
+      method = "REML"
+    )
+    
+    # predict proportion, compute RMSE on proportion scale
+    p_hat <- predict(fit_k, newdata = test_dat, type = "response")
+    p_obs <- with(test_dat, IND_PREF / ALL_MAT)
+    
+    errs <- c(
+      errs,
+      sqrt(mean((p_obs - p_hat)^2, na.rm = TRUE))
+    )
+  }
+  
+  mean(errs, na.rm = TRUE)
+}
+
+safe_cv_rmse <- function(fml,
+                         data,
+                         k_folds   = 5,
+                         gap       = 1,
+                         min_train = 8) {
+  out <- try(
+    cv_rmse(
+      fml,
+      data      = data,
+      k_folds   = k_folds,
+      min_train = min_train,
+      gap       = gap
+    ),
+    silent = TRUE
+  )
+  if (inherits(out, "try-error")) NA_real_ else out
+}
+
+## ------------------------------------------------------------
+## 6) Define parameter grids on model.dat3 and run CV
+## ------------------------------------------------------------
+response <- "cbind(IND_PREF, ALL_MAT - IND_PREF)"
+
+lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",    names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND", names(model.dat3))])
+tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",        names(model.dat3))])
+ice.pars  <- c(NA, names(model.dat3)[grep("ICE",         names(model.dat3))])
+
+combos <- tidyr::expand_grid(
+  ice  = ice.pars,
+  lg   = lg.pars,
+  sm   = sm.pars,
+  tocc = tocc.pars
+) %>%
+  dplyr::filter(!(is.na(lg) & is.na(sm) & is.na(ice) & is.na(tocc)))
+
+safe_gam <- purrr::safely(gam)
+
+fits <- purrr::pmap_dfr(
+  combos,
+  function(lg, sm, ice, tocc) {
+    
+    terms <- c(
+      if (!is.na(lg))   paste0("s(", lg,   ", k = 4)") else NULL,
+      if (!is.na(sm))   paste0("s(", sm,   ", k = 4)") else NULL,
+      if (!is.na(tocc)) paste0("s(", tocc, ", k = 4)") else NULL,
+      if (!is.na(ice))  paste0("s(", ice,  ", k = 4)") else NULL
+    )
+    
+    fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
+    
+    fit <- safe_gam(
+      fml,
+      data   = model.dat3,
+      family = quasibinomial(link = "logit"),
+      method = "REML"
+    )
+    
+    if (!is.null(fit$error)) {
+      return(tibble::tibble(
+        sm_term   = sm,
+        lg_term   = lg,
+        ice_term  = ice,
+        tocc_term = tocc,
+        k_terms   = length(terms),
+        AIC       = NA_real_,
+        GCV       = NA_real_,
+        cv_rmse   = NA_real_,
+        edf_total = NA_real_,
+        error     = conditionMessage(fit$error)
+      ))
+    }
+    
+    cv_err <- safe_cv_rmse(
+      fml,
+      data      = model.dat3,
+      k_folds   = k_folds,
+      gap       = 1,
+      min_train = 8
+    )
+    
+    tibble::tibble(
+      sm_term   = sm,
+      lg_term   = lg,
+      ice_term  = ice,
+      tocc_term = tocc,
+      k_terms   = length(terms),
+      AIC       = NA_real_,                    # not meaningful for quasibinomial
+      GCV       = fit$result$gcv.ubre,         # from mgcv
+      cv_rmse   = cv_err,
+      edf_total = sum(fit$result$edf),
+      error     = NA_character_
+    )
+  }
+)
+
+# Evaluate model fits based on AIC and RMSE ----
+fits_ranked <- fits %>%
+  # remove models that failed
+  dplyr::filter(is.na(error)) %>%
+  # compute deltas and RMSE SD
+  dplyr::mutate(
+    dGCV   = GCV - min(GCV, na.rm = TRUE),
+    dRMSE  = cv_rmse - min(cv_rmse, na.rm = TRUE),
+    rmse_sd = sd(cv_rmse, na.rm = TRUE)
+  ) %>%
+  # define "neighborhood" criteria
+  dplyr::mutate(
+    keep_GCV  = dGCV  <= 0.7,         # e.g. within 0.01 of best GCV (tune as needed)
+    keep_RMSE = dRMSE <= rmse_sd * 2   # within 2 SD of best RMSE
+  ) %>%
+  # keep models that are good on at least one criterion
+  filter(keep_RMSE, dGCV <= 1) %>%    
+  # rank primarily by RMSE, secondarily by GCV
+  dplyr::arrange(cv_rmse, GCV)
+
+fits_ranked
+
+write.csv(fits_ranked, "./Maturity research/Output/SNOW_male_indpref_modelselection.csv")
+
+# fit model  ----
+mod1 <- gam(
+  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
+    s(INST1_ABUND, k = 4)+
+    s(LG_ABUND_avg2, k =4) + 
+    s(ICE, k = 4),
+  data   = model.dat3,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
+gam.check(mod1)
+summary(mod1)
+acf(na.omit(mod1$residuals))
+
+# plot facetted smooths
+sm.dat <- smooth_estimates(mod1) %>%
+  pivot_longer(., cols = 6:ncol(.), names_to = "resp", values_to = "value")
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  facet_wrap(~ .smooth, scales = "free_x", nrow = 2) +   # facet by smooth term name
+  theme_bw()+
+  ylab("Partial effect")+
+  xlab("Value")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14))
+
+ggsave("./Maturity research/Figures/SNOW_male_indpref_effectplots.png", width = 8, height = 7)

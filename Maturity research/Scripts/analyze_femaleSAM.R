@@ -231,10 +231,10 @@ ggplot(long_df,
   theme(panel.grid.minor.x = element_blank())
 
 # # select top |cor| for *negative* lags (covariate leads SAM)
-# best_lags <- long_df %>%
-#   filter(lag <= 0) %>%
-#   group_by(short_var) %>%
-#   slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
+best_lags <- long_df %>%
+  filter(lag <= 0 & lag >=-2) %>%
+  group_by(short_var) %>%
+  slice_max(order_by = abs(cor), n = 3, with_ties = FALSE)
 
 
 # Add chosen lagged covariates (covariate precedes SAM) ----
@@ -249,7 +249,7 @@ model.dat3 <- fem.model.dat2 %>%
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
     # FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
     #FEM_MAT_ABUND_avg2    = FEM_MAT_ABUND_avg2,
-    FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2, 1),
+    FEM_MAT_ABUND_lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     #FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     
     
@@ -265,14 +265,14 @@ model.dat3 <- fem.model.dat2 %>%
     # ICE_lag2 = lag(ICE, 2),
     #ICE_avg2    = ICE_avg2,
     # ICE_avg2lag1  = lag(ICE_avg2, 1),
-    ICE_avg2lag2  = lag(ICE_avg2, 2),
+    ICE_avg2  = ICE_avg2,
     
-    # FEM_TOCC  = FEM_TOCC,
+   FEM_TOCC  = FEM_TOCC,
     # FEM_TOCC_lag1 = lag(FEM_TOCC, 1),
     FEM_TOCC_lag2 = lag(FEM_TOCC, 2),
     # FEM_TOCC_avg2    = FEM_TOCC_avg2,
     # FEM_TOCC_avg2lag1  = lag(FEM_TOCC_avg2, 1),
-    FEM_TOCC_avg2lag2  = lag(FEM_TOCC_avg2, 2),
+    #FEM_TOCC_avg2lag2  = lag(FEM_TOCC_avg2, 2),
     
     
     TOTAL_5565              = MATURE + IMMATURE
@@ -283,16 +283,16 @@ model.dat3 <- fem.model.dat2 %>%
     
     FEM_INST1_ABUND,
     
-    FEM_MAT_ABUND, FEM_MAT_ABUND_avg2lag1,
+    FEM_MAT_ABUND, FEM_MAT_ABUND_lag2,
     #FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, FEM_MAT_ABUND_avg2lag2,
     
     MALE_LG_ABUND, MALE_LG_ABUND_avg2,
     #MALE_LG_ABUND_lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2lag2,  MALE_LG_ABUND_avg2lag1,
     
-    ICE, ICE_avg2lag2, 
+    ICE, ICE_avg2, 
     #ICE_avg2lag2, ICE_lag1, ICE_lag2, ICE_avg2lag1,
     
-    FEM_TOCC_lag2, FEM_TOCC_avg2lag2
+    FEM_TOCC_lag2, FEM_TOCC
     #FEM_TOCC_lag1, FEM_TOCC_lag2, FEM_TOCC_avg2, FEM_TOCC_avg2lag1,
   )
 
@@ -356,18 +356,18 @@ safe_cv_rmse <- function(fml, data, k_folds = 3, gap = 1, min_train = 10) {
   if (inherits(out, "try-error")) NA_real_ else out
 }
 
-# Define parameter grids on model.dat3 and run CV ----
+# response variable name in the data
 response <- "SAM"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
-mat.pars   <- c(NA, names(model.dat3)[grep("MAT_ABUND",   names(model.dat3))])
+mat.pars  <- c(NA, names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))])
 sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
 tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
 ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
 
 combos <- tidyr::expand_grid(
   ice  = ice.pars,
-  mat = mat.pars,
+  mat  = mat.pars,
   lg   = lg.pars,
   sm   = sm.pars,
   tocc = tocc.pars
@@ -387,7 +387,10 @@ fits <- purrr::pmap_dfr(
       if (!is.na(mat))  paste0("s(", mat,  ",k=4)") else NULL
     )
     
-    fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
+    ## use log(SAM) as the response
+    fml <- as.formula(
+      paste0("log(", response, ") ~ ", paste(terms, collapse = " + "))
+    )
     
     fit <- safe_gamm(
       fml, data = model.dat3, family = gaussian(),
@@ -405,12 +408,29 @@ fits <- purrr::pmap_dfr(
         AIC       = NA_real_,
         GCV       = NA_real_,
         cv_rmse   = NA_real_,
+        R2        = NA_real_,
         edf_total = NA_real_,
+        ok_resid  = FALSE,
+        ok_acf    = FALSE,
         error     = conditionMessage(fit$error)
       ))
     }
     
+    ## out-of-time error (on log scale)
     cv_err <- safe_cv_rmse(fml, data = model.dat3, k_folds = k_folds)
+    
+    ## R2 from gam component
+    gam_sum <- summary(fit$result$gam)
+    R2      <- gam_sum$r.sq   # or gam_sum$adj.r.sq
+    
+    ## residual diagnostics ----
+    resid_raw <- residuals(fit$result$lme, type = "normalized")
+    z_resid   <- scale(resid_raw)
+    ok_resid  <- !any(abs(z_resid) > 3, na.rm = TRUE)
+    
+    acf_obj   <- acf(resid_raw, plot = FALSE, na.action = na.pass)
+    acf_vals  <- acf_obj$acf[2:6]
+    ok_acf    <- all(abs(acf_vals) < 0.4, na.rm = TRUE)
     
     tibble::tibble(
       sm_term   = sm,
@@ -421,44 +441,41 @@ fits <- purrr::pmap_dfr(
       k_terms   = length(terms),
       AIC       = AIC(fit$result$lme),
       GCV       = fit$result$gcv.ubre,
-      cv_rmse   = cv_err,
+      cv_rmse   = cv_err,       # RMSE on log scale
+      R2        = R2,
       edf_total = sum(fit$result$gam$edf),
+      ok_resid  = ok_resid,
+      ok_acf    = ok_acf,
       error     = NA_character_
     )
   }
 )
 
-# Evaluate model fits based on AIC and RMSE ----
 fits_ranked <- fits %>%
-  # remove models that failed
-  filter(is.na(error)) %>%
-  # compute deltas and RMSE SD
+  filter(is.na(error), ok_resid, ok_acf) %>%        # diagnostics gate
   mutate(
     dAIC    = AIC - min(AIC, na.rm = TRUE),
     dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
     rmse_sd = sd(cv_rmse, na.rm = TRUE)
   ) %>%
-  # define \"neighborhood\" criteria
   mutate(
-    keep_AIC  = dAIC <= 2,          # or <= 2 for stricter AIC selection
-    keep_RMSE = dRMSE <= rmse_sd *2    # \"small\" = within 1 SD of best RMSE
+    keep_RMSE = dRMSE <= 2 * rmse_sd,   # main criterion
   ) %>%
-  # keep models that are good by at least one criterion
-  filter(keep_AIC | keep_RMSE) %>%
-  # rank them
-  arrange(AIC, cv_rmse)
+  filter(keep_RMSE, dAIC <= 4) %>%     # drop only clearly bad AIC
+  dplyr::select(!c(ok_resid, ok_acf, error)) %>%
+  arrange(cv_rmse, AIC)
 
-fits_ranked %>%
-  filter(keep_AIC == TRUE & keep_RMSE == TRUE) %>%
-  arrange(cv_rmse) -> pp
+write.csv(fits_ranked, "./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
+read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 
 # fit model
 mod1 <- gamm(
-  SAM ~ #s(FEM_INST1_ABUND, k = 3) +
-   # s(FEM_MAT_ABUND_avg2lag1, k = 4)+
-    s(MALE_LG_ABUND_avg2, k =4)+
-    s(ICE_avg2lag2, k = 4),
-    #s(FEM_TOCC_avg2lag2, k = 4), 
+  log(SAM) ~ 
+    #s(FEM_INST1_ABUND, k = 4)+
+    s(FEM_MAT_ABUND_lag2, k = 4),
+    #s(MALE_LG_ABUND, k =4)+
+  #s(ICE_avg2, k = 4),
+    #s(FEM_TOCC, k = 4), 
   #s(YEAR),
   correlation = corAR1(),
   data        = model.dat3,
@@ -483,7 +500,7 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
-
+ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots.png", width = 8, height = 7)
 
 # ------------------------------------------
 ## PMAT_5565
@@ -538,6 +555,7 @@ ggplot(long_df,
                      labels = seq(-max_lag, max_lag, 1)) +
   theme(panel.grid.minor.x = element_blank())
 
+ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, height = 7)
 
 ## 2. Add chosen lagged covariates -------------------------------
   model.dat3 <- fem.model.dat2 %>%
@@ -560,14 +578,15 @@ ggplot(long_df,
     # MALE_LG_ABUND_lag2 = lag(MALE_LG_ABUND, 2),
     #MALE_LG_ABUND_avg2    = MALE_LG_ABUND_avg2,
     MALE_LG_ABUND_avg2lag1  = lag(MALE_LG_ABUND_avg2, 1),
-    MALE_LG_ABUND_avg2lag2  = lag(MALE_LG_ABUND_avg2, 2),
+    MALE_LG_ABUND_avg2 = MALE_LG_ABUND_avg2,
+    MALE_LG_ABUND_lag2  = lag(MALE_LG_ABUND, 2),
     
     ICE  = ICE,
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
     # ICE_avg2    = ICE_avg2,
     # ICE_avg2lag1  = lag(ICE_avg2, 1),
-    ICE_avg2lag2  = lag(ICE_avg2, 2),
+    ICE_avg2 = ICE_avg2,
     
     #FEM_TOCC  = FEM_TOCC,
     FEM_TOCC_lag1 = lag(FEM_TOCC, 1),
@@ -588,10 +607,10 @@ ggplot(long_df,
     FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, 
     #FEM_MAT_ABUND_avg2lag2, FEM_MAT_ABUND, FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_avg2lag1,
     
-    MALE_LG_ABUND_avg2lag1, MALE_LG_ABUND_avg2lag2, 
+    MALE_LG_ABUND_avg2lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2,
    # MALE_LG_ABUND, MALE_LG_ABUND_lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2, 
     
-    ICE, ICE_avg2lag2, 
+    ICE, ICE_avg2, 
     #ICE, ICE_lag2, ICE_avg2, ICE_avg2lag1,
     
     FEM_TOCC_lag1, FEM_TOCC_avg2, 
@@ -605,7 +624,7 @@ k_folds <- 3   # kept only for interface compatibility
 cv_rmse <- function(fml,
                     data,
                     k_folds   = 3,   # ignored; kept for compatibility
-                    min_train = 10,
+                    min_train = 8,
                     gap       = 1) { # interpreted as forecast horizon h
   
   data <- data[order(data$YEAR), ]
@@ -652,7 +671,7 @@ safe_cv_rmse <- function(fml,
                          data,
                          k_folds = 3,
                          gap     = 1,
-                         min_train = 10) {
+                         min_train = 8) {
   out <- try(
     cv_rmse(
       fml,
@@ -761,19 +780,20 @@ fits_ranked <- fits %>%
     keep_RMSE = dRMSE <= rmse_sd * 2   # within 2 SD of best RMSE
   ) %>%
   # keep models that are good on at least one criterion
-  dplyr::filter(keep_GCV | keep_RMSE) %>%
+  filter(keep_RMSE, dGCV <= 0.7) %>%    
   # rank primarily by RMSE, secondarily by GCV
   dplyr::arrange(cv_rmse, GCV)
 
-fits_ranked %>% filter(keep_GCV == TRUE & keep_RMSE == TRUE) %>%
-  arrange(cv_rmse) -> pp
+fits_ranked
+
+write.csv(fits_ranked, "./Maturity research/Output/SNOW_female_pmat5565_modelselection.csv")
+read.csv("./Maturity research/Output/SNOW_female_pmat5565_modelselection.csv")
 
 # fit model with temp/ice affecting recruitment ----
 mod1 <- gam(
   cbind(MATURE, IMMATURE) ~ 
       s(MALE_LG_ABUND_avg2lag1, k =4) + 
-    s(FEM_TOCC_avg2, k = 4),
-    #s(ICE_avg2lag2, k = 4),
+    s(ICE_avg2, k = 4),
   data   = model.dat3,
   family = quasibinomial(link = "logit"),
   method = "REML"
@@ -798,4 +818,4 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
-
+ggsave("./Maturity research/Figures/SNOW_female_pmat5565_effectplots.png", width = 8, height = 7)
