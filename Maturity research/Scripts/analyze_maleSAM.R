@@ -234,6 +234,13 @@ model.dat2 <- model.dat %>%
     #TOCC_avg3       = zoo::rollmean(TOCC,        k = 3, fill = NA, align = "right")
   )
 
+M <- cor(model.dat2 %>% dplyr::select(!c(YEAR, SAM)), use = "pairwise.complete.obs", method = "pearson")
+corrplot::corrplot(M,
+                   type = "upper",
+                   method = "square",
+                   order  = "hclust",      # cluster variables
+                   addCoef.col = "black") 
+
 ## ------------------------------------------------------------
 ## 3) CCF diagnostics: which covariates lead SAM?
 ## ------------------------------------------------------------
@@ -308,17 +315,17 @@ model.dat3 <- model.dat2 %>%
     #LG_ABUND_avg2lag1  = lag(LG_ABUND_avg2, 1),
     #LG_ABUND_avg2lag2  = lag(LG_ABUND_avg2, 2),
     
-    ICE  = ICE,
+    #ICE  = ICE,
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
     ICE_avg2    = ICE_avg2,
-    #ICE_avg2lag1  = lag(ICE_avg2, 1),
+    ICE_avg2lag1  = lag(ICE_avg2, 1),
     #ICE_avg2lag2  = lag(ICE_avg2, 2),
     
-    TOCC  = TOCC,
+    TOCC_avg2  = TOCC,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
-    TOCC_avg2    = TOCC_avg2,
+    TOCC_avg2lag1    = lag(TOCC_avg2, 1)
     #TOCC_avg2lag1  = lag(TOCC_avg2, 1),
     #TOCC_avg2lag2  = lag(TOCC_avg2, 2),
     
@@ -332,33 +339,31 @@ model.dat3 <- model.dat2 %>%
     #LG_ABUND_avg2lag2, 
    #LG_ABUND_lag1, LG_ABUND_lag2, 
     
-    ICE, ICE_avg2,
+    ICE_avg2, ICE_avg2lag1,
    #ICE_lag1, ICE_lag2, ICE_avg2lag2,
     
-    TOCC, TOCC_avg2,
+    TOCC_avg2, TOCC_avg2lag1,
    #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
 
 
 
 ## ------------------------------------------------------------
-## 5) CV function
+## 5) CV function (unchanged)
 ## ------------------------------------------------------------
 k_folds <- 5
 
 cv_rmse <- function(fml,
                     data,
-                    k_folds   = 5,   # kept for interface compatibility, not used
-                    min_train = 8,
-                    gap       = 1,   # interpreted as forecast horizon h
+                    k_folds   = 5,   # kept for interface compatibility
+                    min_train = 10,
+                    gap       = 1,   # forecast horizon in years
                     ...) {
   
   data <- data[order(data$YEAR), ]
   n    <- nrow(data)
   
-  h <- gap  # use your existing 'gap' argument as the forecast horizon
-  
-  # last origin index so that we still have h observations to assess
+  h <- gap
   last_origin <- n - h
   if (last_origin <= min_train) {
     stop("Not enough data for requested min_train / gap (h).")
@@ -393,12 +398,12 @@ safe_cv_rmse <- function(fml,
                          data,
                          k_folds   = 5,
                          gap       = 1,
-                         min_train = 8) {
+                         min_train = 10) {
   out <- try(
     cv_rmse(
       fml,
       data      = data,
-      k_folds   = k_folds,  # ignored but kept for API consistency
+      k_folds   = k_folds,
       min_train = min_train,
       gap       = gap
     ),
@@ -406,8 +411,9 @@ safe_cv_rmse <- function(fml,
   )
   if (inherits(out, "try-error")) NA_real_ else out
 }
+
 ## ------------------------------------------------------------
-## 6) Define parameter grids on model.dat3 and run CV
+## 6) Parameter grid and 2‑stage selection (AICc then CV)
 ## ------------------------------------------------------------
 response <- "SAM"
 
@@ -426,7 +432,8 @@ combos <- tidyr::expand_grid(
 
 safe_gamm <- purrr::safely(gamm)
 
-fits <- purrr::pmap_dfr(
+## 6a. Initial fits: AICc only, no CV ------------------------------------
+fits_initial <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc) {
     
@@ -441,9 +448,9 @@ fits <- purrr::pmap_dfr(
     
     fit <- safe_gamm(
       fml,
-      data   = model.dat3,
-      family = gaussian(),
-      method = "REML",
+      data        = model.dat3,
+      family      = gaussian(),
+      method      = "REML",
       correlation = corAR1()
     )
     
@@ -454,7 +461,7 @@ fits <- purrr::pmap_dfr(
         ice_term  = ice,
         tocc_term = tocc,
         k_terms   = length(terms),
-        AIC       = NA_real_,
+        AICc      = NA_real_,
         GCV       = NA_real_,
         cv_rmse   = NA_real_,
         edf_total = NA_real_,
@@ -462,48 +469,63 @@ fits <- purrr::pmap_dfr(
       ))
     }
     
-    cv_err <- safe_cv_rmse(
-      fml,
-      data      = model.dat3,
-      k_folds   = k_folds,
-      gap       = 1,      # now: forecast horizon h
-      min_train = 10
-    )
-    
     tibble::tibble(
       sm_term   = sm,
       lg_term   = lg,
       ice_term  = ice,
       tocc_term = tocc,
       k_terms   = length(terms),
-      AIC       = AIC(fit$result$lme),
+      AICc      = MuMIn::AICc(fit$result$lme),
       GCV       = fit$result$gcv.ubre,
-      cv_rmse   = cv_err,
+      cv_rmse   = NA_real_,
       edf_total = sum(fit$result$gam$edf),
       error     = NA_character_
     )
   }
 )
 
-
-
-fits_ranked <- fits %>%
-  # remove models that failed
+## 6b. Keep only AICc‑supported models, then run CV ----------------------
+fits_AICc <- fits_initial %>%
   filter(is.na(error)) %>%
-  # compute deltas and RMSE SD
-  mutate(
-    dAIC    = AIC - min(AIC, na.rm = TRUE),
-    dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
-    rmse_sd = sd(cv_rmse, na.rm = TRUE)
-  ) %>%
-  # define \"neighborhood\" criteria
-  mutate(
-    keep_RMSE = dRMSE <= 2 * rmse_sd,   # main criterion
-  ) %>%
-  filter(keep_RMSE, dAIC <= 4) %>%     # drop only clearly bad AIC %>%
-  # rank them
-  arrange(cv_rmse, AIC)
+  mutate(dAICc = AICc - min(AICc, na.rm = TRUE)) %>%
+  filter(dAICc <= 4)
 
+fits_AICc_cv <- fits_AICc %>%
+  mutate(
+    cv_rmse = purrr::pmap_dbl(
+      list(lg_term, sm_term, ice_term, tocc_term),
+      function(lg, sm, ice, tocc) {
+        
+        terms <- c(
+          if (!is.na(lg))   paste0("s(", lg,   ",k = 4)") else NULL,
+          if (!is.na(sm))   paste0("s(", sm,   ",k = 4)") else NULL,
+          if (!is.na(tocc)) paste0("s(", tocc, ",k = 4)") else NULL,
+          if (!is.na(ice))  paste0("s(", ice,  ",k = 4)") else NULL
+        )
+        
+        fml <- as.formula(paste(response, "~", paste(terms, collapse = " + ")))
+        
+        safe_cv_rmse(
+          fml,
+          data      = model.dat3,
+          k_folds   = k_folds,
+          gap       = 1,
+          min_train = 10
+        )
+      }
+    )
+  )
+
+## 6c. Final ranking: prioritize RMSE, then AICc --------------------------
+fits_ranked <- fits_AICc_cv %>%
+  mutate(
+    dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
+    rmse_sd = sd(cv_rmse, na.rm = TRUE),
+    keep_RMSE = dRMSE <= 2 * rmse_sd
+  ) %>%
+  filter(keep_RMSE) %>%
+  dplyr::select(!c(error, rmse_sd, keep_RMSE)) %>%
+  arrange(cv_rmse, AICc)
 
 fits_ranked
 
@@ -514,8 +536,8 @@ read.csv("./Maturity research/Output/SNOW_male_SAM_modelselection.csv")
 # fit model
 mod <- gamm(
   SAM ~ s(INST1_ABUND, k = 4) +
-    s(LG_ABUND_avg2,    k = 4),
-    #s(ICE, k = 4),
+    s(LG_ABUND_avg2,    k = 4)+
+    s(ICE_avg2lag1, k = 4),
     #s(TOCC_avg2, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
@@ -599,6 +621,14 @@ model.dat2 <- indpref.dat %>%
     #TOCC_avg3       = zoo::rollmean(TOCC,        k = 3, fill = NA, align = "right")
   )
 
+M <- cor(model.dat2 %>% dplyr::select(!c(YEAR, IND_PREF, ALL_MAT, PROP_INDPREF)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
+corrplot::corrplot(M,
+                   type = "upper",
+                   method = "square",
+                   order  = "hclust",      # cluster variables
+                   addCoef.col = "black") 
+
+
 ## ------------------------------------------------------------
 ## 3) CCF diagnostics
 ## ------------------------------------------------------------
@@ -672,14 +702,14 @@ model.dat3 <- model.dat2 %>%
     #LG_ABUND_avg2lag1  = lag(LG_ABUND_avg2, 1),
     #LG_ABUND_avg2lag2  = lag(LG_ABUND_avg2, 2),
     
-    ICE  = ICE,
+    ICE_avg2  = ICE_avg2,
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
-    ICE_avg2    = ICE_avg2,
+    ICE_avg2lag1    = lag(ICE_avg2, 1),
     #ICE_avg2lag1  = lag(ICE_avg2, 1),
     #ICE_avg2lag2  = lag(ICE_avg2, 2),
     
-    TOCC_lag1  = lag(TOCC, 1),
+    TOCC_avg2  = TOCC_avg2,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
     TOCC_avg2lag1    = lag(TOCC_avg2,1)
@@ -696,10 +726,10 @@ model.dat3 <- model.dat2 %>%
     #LG_ABUND_avg2lag2, 
     #LG_ABUND_lag1, LG_ABUND_lag2, 
     
-    ICE, ICE_avg2,
+    ICE_avg2, ICE_avg2lag1,
     #ICE_lag1, ICE_lag2, ICE_avg2lag2,
     
-    TOCC_lag1, TOCC_avg2lag1,
+    TOCC_avg2, TOCC_avg2lag1,
     #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
 
@@ -879,7 +909,7 @@ mod1 <- gam(
   cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
     s(INST1_ABUND, k = 4)+
     s(LG_ABUND_avg2, k =4) + 
-    s(ICE, k = 4),
+    s(ICE_avg2, k = 4),
   data   = model.dat3,
   family = quasibinomial(link = "logit"),
   method = "REML"

@@ -173,6 +173,13 @@ fem.model.dat2 <- fem.model.dat %>%
     #FEM_MAT_ABUND_avg3 = zoo::rollmean(FEM_MAT_ABUND,    k = 3, fill = NA, align = "right")
   )
 
+M <- cor(fem.model.dat2 %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
+corrplot::corrplot(M,
+                   type = "upper",
+                   method = "square",
+                   order  = "hclust",      # cluster variables
+                   addCoef.col = "black") 
+
 # ------------------------------------------
 ## SAM 
 # ------------------------------------------
@@ -374,11 +381,15 @@ combos <- tidyr::expand_grid(
 ) %>%
   dplyr::filter(!(is.na(lg) & is.na(sm) & is.na(ice) & is.na(tocc) & is.na(mat)))
 
+## ------------------------------------------------------------
+## 1. Fit all models once, store AICc, no CV yet
+## ------------------------------------------------------------
 safe_gamm <- purrr::safely(gamm)
 
-fits <- purrr::pmap_dfr(
+fits_initial <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc, mat) {
+    
     terms <- c(
       if (!is.na(lg))   paste0("s(", lg,   ",k=4)") else NULL,
       if (!is.na(sm))   paste0("s(", sm,   ",k=4)") else NULL,
@@ -387,14 +398,16 @@ fits <- purrr::pmap_dfr(
       if (!is.na(mat))  paste0("s(", mat,  ",k=4)") else NULL
     )
     
-    ## use log(SAM) as the response
     fml <- as.formula(
       paste0("log(", response, ") ~ ", paste(terms, collapse = " + "))
     )
     
     fit <- safe_gamm(
-      fml, data = model.dat3, family = gaussian(),
-      method = "REML", correlation = corAR1()
+      fml,
+      data        = model.dat3,
+      family      = gaussian(),
+      method      = "REML",
+      correlation = corAR1()
     )
     
     if (!is.null(fit$error)) {
@@ -405,7 +418,7 @@ fits <- purrr::pmap_dfr(
         ice_term  = ice,
         tocc_term = tocc,
         k_terms   = length(terms),
-        AIC       = NA_real_,
+        AICc      = NA_real_,
         GCV       = NA_real_,
         cv_rmse   = NA_real_,
         R2        = NA_real_,
@@ -416,14 +429,7 @@ fits <- purrr::pmap_dfr(
       ))
     }
     
-    ## out-of-time error (on log scale)
-    cv_err <- safe_cv_rmse(fml, data = model.dat3, k_folds = k_folds)
-    
-    ## R2 from gam component
-    gam_sum <- summary(fit$result$gam)
-    R2      <- gam_sum$r.sq   # or gam_sum$adj.r.sq
-    
-    ## residual diagnostics ----
+    ## residual diagnostics
     resid_raw <- residuals(fit$result$lme, type = "normalized")
     z_resid   <- scale(resid_raw)
     ok_resid  <- !any(abs(z_resid) > 3, na.rm = TRUE)
@@ -432,6 +438,8 @@ fits <- purrr::pmap_dfr(
     acf_vals  <- acf_obj$acf[2:6]
     ok_acf    <- all(abs(acf_vals) < 0.4, na.rm = TRUE)
     
+    gam_sum <- summary(fit$result$gam)
+    
     tibble::tibble(
       sm_term   = sm,
       mat_term  = mat,
@@ -439,10 +447,10 @@ fits <- purrr::pmap_dfr(
       ice_term  = ice,
       tocc_term = tocc,
       k_terms   = length(terms),
-      AIC       = AIC(fit$result$lme),
+      AICc      = MuMIn::AICc(fit$result$lme),  # AICc only
       GCV       = fit$result$gcv.ubre,
-      cv_rmse   = cv_err,       # RMSE on log scale
-      R2        = R2,
+      cv_rmse   = NA_real_,                     # filled later
+      R2        = gam_sum$r.sq,
       edf_total = sum(fit$result$gam$edf),
       ok_resid  = ok_resid,
       ok_acf    = ok_acf,
@@ -451,19 +459,52 @@ fits <- purrr::pmap_dfr(
   }
 )
 
-fits_ranked <- fits %>%
-  filter(is.na(error), ok_resid, ok_acf) %>%        # diagnostics gate
+## ------------------------------------------------------------
+## 2. Keep only AICc‑supported models, then run CV on them
+## ------------------------------------------------------------
+# Gate on diagnostics and AICc
+fits_AICc <- fits_initial %>%
+  filter(is.na(error), ok_resid, ok_acf) %>%
+  mutate(dAICc = AICc - min(AICc, na.rm = TRUE)) %>%
+  filter(dAICc <= 4)    # only models within 4 AICc units
+
+# Now compute CV RMSE ONLY for these models
+fits_AICc_cv <- fits_AICc %>%
   mutate(
-    dAIC    = AIC - min(AIC, na.rm = TRUE),
+    cv_rmse = purrr::pmap_dbl(
+      list(male_term, sm_term, ice_term, tocc_term, mat_term),
+      function(lg, sm, ice, tocc, mat) {
+        
+        terms <- c(
+          if (!is.na(lg))   paste0("s(", lg,   ",k=4)") else NULL,
+          if (!is.na(sm))   paste0("s(", sm,   ",k=4)") else NULL,
+          if (!is.na(tocc)) paste0("s(", tocc, ",k=4)") else NULL,
+          if (!is.na(ice))  paste0("s(", ice,  ",k=4)") else NULL,
+          if (!is.na(mat))  paste0("s(", mat,  ",k=4)") else NULL
+        )
+        
+        fml <- as.formula(
+          paste0("log(", response, ") ~ ", paste(terms, collapse = " + "))
+        )
+        
+        safe_cv_rmse(fml, data = model.dat3,
+                     k_folds = k_folds, gap = 1, min_train = 10)
+      }
+    )
+  )
+
+# ------------------------------------------------------------
+## 3. Final ranking: prioritize RMSE, then AICc
+## ------------------------------------------------------------
+fits_ranked <- fits_AICc_cv %>%
+  mutate(
     dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
-    rmse_sd = sd(cv_rmse, na.rm = TRUE)
+    rmse_sd = sd(cv_rmse, na.rm = TRUE),
+    keep_RMSE = dRMSE <= 2 * rmse_sd
   ) %>%
-  mutate(
-    keep_RMSE = dRMSE <= 2 * rmse_sd,   # main criterion
-  ) %>%
-  filter(keep_RMSE, dAIC <= 4) %>%     # drop only clearly bad AIC
-  dplyr::select(!c(ok_resid, ok_acf, error)) %>%
-  arrange(cv_rmse, AIC)
+  filter(keep_RMSE) %>%
+  dplyr::select(!c(ok_resid, ok_acf, error, rmse_sd, keep_RMSE)) %>%
+  arrange(cv_rmse, AICc)
 
 write.csv(fits_ranked, "./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
@@ -472,7 +513,7 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 mod1 <- gamm(
   log(SAM) ~ 
     #s(FEM_INST1_ABUND, k = 4)+
-    s(FEM_MAT_ABUND_lag2, k = 4),
+    s(FEM_MAT_ABUND, k = 4),
     #s(MALE_LG_ABUND, k =4)+
   #s(ICE_avg2, k = 4),
     #s(FEM_TOCC, k = 4), 
@@ -618,35 +659,35 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
   )
 
 
-
-k_folds <- 3   # kept only for interface compatibility
+## ------------------------------------------------------------
+## Time‑series CV for PMAT_5565 (binomial GAM)
+## ------------------------------------------------------------
+k_folds_PMAT <- 4
+gap_PMAT     <- 1
 
 cv_rmse <- function(fml,
                     data,
-                    k_folds   = 3,   # ignored; kept for compatibility
-                    min_train = 8,
-                    gap       = 1) { # interpreted as forecast horizon h
+                    k_folds   = 3,   # ignored
+                    min_train = 10,
+                    gap       = 1) {
   
   data <- data[order(data$YEAR), ]
-  data <- subset(data, TOTAL_5565 > 0)  # ensure valid binomial counts
+  data <- subset(data, TOTAL_5565 > 0)
   n    <- nrow(data)
   
-  h <- gap  # forecast horizon in years
-  
-  # last origin index so that we still have h observations to assess
+  h <- gap
   last_origin <- n - h
   if (last_origin <= min_train) {
     stop("Not enough data for requested min_train / gap (h).")
   }
   
   errs <- c()
+  eps  <- 1e-6   # small bound for proportions
   
-  # expanding (stretching) window: 1:min_train, 1:(min_train+1), ..., 1:last_origin
   for (origin in seq.int(min_train, last_origin)) {
     train_dat <- data[1:origin, , drop = FALSE]
     test_dat  <- data[(origin + 1):(origin + h), , drop = FALSE]
     
-    # fit binomial GAM on counts
     fit_k <- gam(
       fml,
       data   = train_dat,
@@ -654,9 +695,10 @@ cv_rmse <- function(fml,
       method = "REML"
     )
     
-    # predict proportion matured, then compute RMSE on that scale
     p_hat <- predict(fit_k, newdata = test_dat, type = "response")
+    
     p_obs <- with(test_dat, MATURE / TOTAL_5565)
+    p_obs <- pmin(pmax(p_obs, eps), 1 - eps)
     
     errs <- c(
       errs,
@@ -669,14 +711,14 @@ cv_rmse <- function(fml,
 
 safe_cv_rmse <- function(fml,
                          data,
-                         k_folds = 3,
-                         gap     = 1,
-                         min_train = 8) {
+                         k_folds   = 3,
+                         gap       = 1,
+                         min_train = 10) {
   out <- try(
     cv_rmse(
       fml,
       data      = data,
-      k_folds   = k_folds,  # ignored inside cv_rmse
+      k_folds   = k_folds,
       min_train = min_train,
       gap       = gap
     ),
@@ -685,8 +727,10 @@ safe_cv_rmse <- function(fml,
   if (inherits(out, "try-error")) NA_real_ else out
 }
 
-## 4. Grid of candidate covariate terms --------------------------
-response_counts <- "cbind(MATURE, TOTAL_5565 - MATURE)"
+## ------------------------------------------------------------
+## Grid of candidate covariate terms
+## ------------------------------------------------------------
+response_counts <- "cbind(MATURE, IMMATURE)"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
 mat.pars  <- c(NA, names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))])
@@ -705,10 +749,10 @@ combos <- tidyr::expand_grid(
 
 safe_gam <- purrr::safely(gam)
 
-k_folds <- 4
-gap     <- 1
-
-fits <- purrr::pmap_dfr(
+## ------------------------------------------------------------
+## 1. Initial fits: store GCV, no CV yet
+## ------------------------------------------------------------
+fits_initial <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc, mat) {
     
@@ -738,15 +782,12 @@ fits <- purrr::pmap_dfr(
         ice_term  = ice,
         tocc_term = tocc,
         k_terms   = length(terms),
-        AIC       = NA_real_,
         GCV       = NA_real_,
         cv_rmse   = NA_real_,
         edf_total = NA_real_,
         error     = conditionMessage(fit$error)
       ))
     }
-    
-    cv_err <- safe_cv_rmse(fml, data = model.dat3, k_folds = k_folds, gap = gap)
     
     tibble::tibble(
       sm_term   = sm,
@@ -755,41 +796,66 @@ fits <- purrr::pmap_dfr(
       ice_term  = ice,
       tocc_term = tocc,
       k_terms   = length(terms),
-      AIC       = AIC(fit$result),
       GCV       = fit$result$gcv.ubre,
-      cv_rmse   = cv_err,
+      cv_rmse   = NA_real_,
       edf_total = sum(fit$result$edf),
       error     = NA_character_
     )
   }
 )
 
-# Evaluate model fits based on AIC and RMSE ----
-fits_ranked <- fits %>%
-  # remove models that failed
+## ------------------------------------------------------------
+## 2. Keep only GCV‑supported models, then run CV
+## ------------------------------------------------------------
+fits_GCV <- fits_initial %>%
   dplyr::filter(is.na(error)) %>%
-  # compute deltas and RMSE SD
   dplyr::mutate(
-    dGCV   = GCV - min(GCV, na.rm = TRUE),
-    dRMSE  = cv_rmse - min(cv_rmse, na.rm = TRUE),
-    rmse_sd = sd(cv_rmse, na.rm = TRUE)
+    dGCV = GCV - min(GCV, na.rm = TRUE)
   ) %>%
-  # define "neighborhood" criteria
+  dplyr::filter(dGCV <= 0.7)   # choose a small GCV window you like
+
+fits_GCV_cv <- fits_GCV %>%
   dplyr::mutate(
-    keep_GCV  = dGCV  <= 0.7,         # e.g. within 0.01 of best GCV (tune as needed)
-    keep_RMSE = dRMSE <= rmse_sd * 2   # within 2 SD of best RMSE
+    cv_rmse = purrr::pmap_dbl(
+      list(male_term, sm_term, ice_term, tocc_term, mat_term),
+      function(lg, sm, ice, tocc, mat) {
+        
+        terms <- c(
+          if (!is.na(lg))   paste0("s(", lg,   ", k = 4)") else NULL,
+          if (!is.na(sm))   paste0("s(", sm,   ", k = 4)") else NULL,
+          if (!is.na(tocc)) paste0("s(", tocc, ", k = 4)") else NULL,
+          if (!is.na(ice))  paste0("s(", ice,  ", k = 4)") else NULL,
+          if (!is.na(mat))  paste0("s(", mat,  ", k = 4)") else NULL
+        )
+        
+        rhs <- if (length(terms) == 0) "1" else paste(terms, collapse = " + ")
+        fml <- as.formula(paste(response_counts, "~", rhs))
+        
+        safe_cv_rmse(
+          fml,
+          data      = model.dat3,
+          k_folds   = k_folds_PMAT,
+          gap       = gap_PMAT,
+          min_train = 10
+        )
+      }
+    )
+  )
+
+## ------------------------------------------------------------
+## 3. Final ranking: prioritize RMSE, then GCV
+## ------------------------------------------------------------
+fits_ranked <- fits_GCV_cv %>%
+  dplyr::mutate(
+    dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
+    rmse_sd = sd(cv_rmse, na.rm = TRUE),
+    keep_RMSE = dRMSE <= 2 * rmse_sd
   ) %>%
-  # keep models that are good on at least one criterion
-  filter(keep_RMSE, dGCV <= 0.7) %>%    
-  # rank primarily by RMSE, secondarily by GCV
+  dplyr::filter(keep_RMSE) %>%
+  dplyr::select(!c(error, rmse_sd, keep_RMSE)) %>%
   dplyr::arrange(cv_rmse, GCV)
 
-fits_ranked
-
-write.csv(fits_ranked, "./Maturity research/Output/SNOW_female_pmat5565_modelselection.csv")
-read.csv("./Maturity research/Output/SNOW_female_pmat5565_modelselection.csv")
-
-# fit model with temp/ice affecting recruitment ----
+# Fit best model
 mod1 <- gam(
   cbind(MATURE, IMMATURE) ~ 
       s(MALE_LG_ABUND_avg2lag1, k =4) + 
