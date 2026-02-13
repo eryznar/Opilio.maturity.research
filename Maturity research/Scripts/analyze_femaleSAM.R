@@ -399,7 +399,7 @@ fits_initial <- purrr::pmap_dfr(
     )
     
     fml <- as.formula(
-      paste0("log(", response, ") ~ ", paste(terms, collapse = " + "))
+      paste(response, "~", paste(terms, collapse = " + "))
     )
     
     fit <- safe_gamm(
@@ -511,13 +511,8 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 
 # fit model
 mod1 <- gamm(
-  log(SAM) ~ 
-    #s(FEM_INST1_ABUND, k = 4)+
-    s(FEM_MAT_ABUND, k = 4),
-    #s(MALE_LG_ABUND, k =4)+
-  #s(ICE_avg2, k = 4),
-    #s(FEM_TOCC, k = 4), 
-  #s(YEAR),
+  SAM ~ 
+    s(FEM_MAT_ABUND_lag2, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian(),
@@ -814,9 +809,32 @@ fits_GCV <- fits_initial %>%
   ) %>%
   dplyr::filter(dGCV <= 0.7)   # choose a small GCV window you like
 
+# helper that returns list(RMSE = ..., converged = TRUE/FALSE)
+cv_rmse_flag <- function(fml, data, k_folds, gap, min_train) {
+  out <- try(
+    cv_rmse(
+      fml,
+      data      = data,
+      k_folds   = k_folds,
+      min_train = min_train,
+      gap       = gap
+    ),
+    silent = TRUE
+  )
+  
+  if (inherits(out, "try-error") || any(grepl("did not converge", out))) {
+    list(RMSE = NA_real_, converged = FALSE)
+  } else {
+    list(RMSE = out, converged = TRUE)
+  }
+}
+
+
+
+
 fits_GCV_cv <- fits_GCV %>%
-  dplyr::mutate(
-    cv_rmse = purrr::pmap_dbl(
+  mutate(
+    cv_res = purrr::pmap(
       list(male_term, sm_term, ice_term, tocc_term, mat_term),
       function(lg, sm, ice, tocc, mat) {
         
@@ -831,7 +849,7 @@ fits_GCV_cv <- fits_GCV %>%
         rhs <- if (length(terms) == 0) "1" else paste(terms, collapse = " + ")
         fml <- as.formula(paste(response_counts, "~", rhs))
         
-        safe_cv_rmse(
+        cv_rmse_flag(
           fml,
           data      = model.dat3,
           k_folds   = k_folds_PMAT,
@@ -839,8 +857,11 @@ fits_GCV_cv <- fits_GCV %>%
           min_train = 10
         )
       }
-    )
-  )
+    ),
+    cv_rmse    = purrr::map_dbl(cv_res, "RMSE"),
+    cv_ok_conv = purrr::map_lgl(cv_res, "converged")
+  ) %>%
+  dplyr::select(-cv_res)
 
 ## ------------------------------------------------------------
 ## 3. Final ranking: prioritize RMSE, then GCV
@@ -854,6 +875,8 @@ fits_ranked <- fits_GCV_cv %>%
   dplyr::filter(keep_RMSE) %>%
   dplyr::select(!c(error, rmse_sd, keep_RMSE)) %>%
   dplyr::arrange(cv_rmse, GCV)
+
+write.csv(fits_ranked, "./Maturity research/Output/snow_female_pmat5565_modelselection.csv")
 
 # Fit best model
 mod1 <- gam(

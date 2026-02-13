@@ -1,2 +1,2 @@
-"","sm_term","mat_term","male_term","ice_term","tocc_term","k_terms","AIC","cv_rmse","R2","edf_total","dAIC","dRMSE","rmse_sd","keep_RMSE"
-"1",NA,"FEM_MAT_ABUND",NA,NA,NA,1,-44.6997833679166,48.3420442851532,0.083935226810674,1.99999996241991,0,0.0876994094693515,0.0534054277318919,TRUE
+"","sm_term","mat_term","male_term","ice_term","tocc_term","k_terms","AICc","cv_rmse","R2","edf_total","dAICc","dRMSE"
+"1",NA,"FEM_MAT_ABUND_lag2",NA,NA,NA,1,195.173611067247,48.2788664461836,0.106721833886833,2.00000004355509,3.19195253398203,0
