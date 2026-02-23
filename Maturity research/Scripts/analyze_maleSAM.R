@@ -24,11 +24,12 @@ ggplot(SAM.dat, aes(YEAR, SAM))+
   geom_line()+
   geom_point()+
   theme_bw()+
+  annotate(geom = "text", x=2000, y = 80, label = "p'<0.05", size = 5)+
   geom_smooth(method = "lm")
 
 summary(lme(SAM ~ YEAR, data = na.omit(SAM.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 
-ggsave("./Maturity research/Figures/SNOW_male_SAM.png", width = 9, height = 7)
+ggsave("./Maturity research/Figures/SNOW_male_SAM.png", width = 8, height = 7)
 
 # Selectivity
 sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
@@ -158,8 +159,8 @@ instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
                                     size_min = 40, size_max = 60,  sex = "male", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
-  reframe(INST1_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, INST1_ABUND)  %>%
+  reframe(COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, COHORT_ABUND)  %>%
   filter(YEAR >= 1989)
 
 abund.dat <- right_join(bioabund.lg.sel, bioabund.sm.sel) %>%
@@ -205,15 +206,23 @@ corrplot::corrplot(M,
                    addCoef.col = "black") 
 
 mdat.long <- model.dat %>%
+  rename("Large male abundance (≥95mm)" = "LG_ABUND",
+         "Male cohort abundance (40-60mm)" = "COHORT_ABUND",
+         "Ice % cover" = "ICE",
+         "Temperature occupied" = "TOCC") %>%
   pivot_longer(!YEAR, names_to = "Parameter", values_to = "Value") 
 
-ggplot(mdat.long, aes(YEAR, Value))+
+ggplot(mdat.long %>% filter(!Parameter %in% c("SAM", "PMAT_INDPREF")), aes(YEAR, Value))+
   geom_line()+
   geom_point()+
   facet_wrap(~Parameter, scales = "free_y")+
-  theme_bw()
+  theme_bw()+
+  xlab("Year")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 13))
 
-ggsave("./Maturity research/Figures/SNOW_male_analysis_TS.png", width = 10, height = 7)
+ggsave("./Maturity research/Figures/SNOW_male_analysis_TS.png", width = 8, height = 6)
 
 ## ------------------------------------------------------------
 ## 2) Build running means (and keep in one object)
@@ -226,20 +235,43 @@ model.dat2 <- model.dat %>%
     # 2‑ and 3‑year running means
     ICE_avg2        = zoo::rollmean(ICE,         k = 2, fill = NA, align = "right"),
     #ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
-    INST1_ABUND_avg2= zoo::rollmean(INST1_ABUND, k = 2, fill = NA, align = "right"),
-    #INST1_ABUND_avg3= zoo::rollmean(INST1_ABUND, k = 3, fill = NA, align = "right"),
+    COHORT_ABUND_avg2= zoo::rollmean(COHORT_ABUND, k = 2, fill = NA, align = "right"),
+    #COHORT_ABUND_avg3= zoo::rollmean(COHORT_ABUND, k = 3, fill = NA, align = "right"),
     LG_ABUND_avg2   = zoo::rollmean(LG_ABUND,    k = 2, fill = NA, align = "right"),
     #LG_ABUND_avg3   = zoo::rollmean(LG_ABUND,    k = 3, fill = NA, align = "right"),
     TOCC_avg2       = zoo::rollmean(TOCC,        k = 2, fill = NA, align = "right"),
     #TOCC_avg3       = zoo::rollmean(TOCC,        k = 3, fill = NA, align = "right")
   )
 
-M <- cor(model.dat2 %>% dplyr::select(!c(YEAR, SAM)), use = "pairwise.complete.obs", method = "pearson")
-corrplot::corrplot(M,
-                   type = "upper",
-                   method = "square",
-                   order  = "hclust",      # cluster variables
-                   addCoef.col = "black") 
+
+cors <- model.dat2 %>%
+  dplyr::select(!c(YEAR, SAM))%>%
+  mutate(ICE_lag1 = lag(ICE, 1),
+         ICE_lag2 = lag(ICE, 2),
+         ICE_avg2lag1 = lag(ICE_avg2, 1),
+         COHORT_ABUND_lag1 = lag(COHORT_ABUND, 1),
+         COHORT_ABUND_lag2 = lag(COHORT_ABUND, 2),
+         COHORT_ABUND_avg2lag1 = lag(COHORT_ABUND_avg2, 1),
+         LG_ABUND_lag1 = lag(LG_ABUND, 1),
+         LG_ABUND_lag2 = lag(LG_ABUND, 2),
+         LG_ABUND_avg2lag1 = lag(LG_ABUND_avg2, 1),
+         TOCC_lag1 = lag(TOCC, 1),
+         TOCC_lag2 = lag(TOCC, 2),
+         TOCC_avg2lag1 = lag(TOCC_avg2, 1))
+
+M <- cor(cors, use = "pairwise.complete.obs", method = "pearson")
+corrplot::corrplot(
+  M,
+  type      = "upper",
+  method    = "color",      # or "square"
+  order     = "alphabet",
+  tl.col    = "black",      # label color
+  tl.cex    = 0.6,          # label size
+  tl.srt    = 45,           # label rotation
+  addCoef.col = NA,         # no numbers on the plot
+  number.cex  = 0.4,        # (used if you keep numbers)
+  mar = c(0,0,1,0)          # smaller margins
+)
 
 ## ------------------------------------------------------------
 ## 3) CCF diagnostics: which covariates lead SAM?
@@ -306,7 +338,7 @@ model.dat3 <- model.dat2 %>%
   mutate(
     #SAM = log(SAM),
     
-    INST1_ABUND = INST1_ABUND, # hard coding to lag0, no avg
+    COHORT_ABUND = COHORT_ABUND, # hard coding to lag0, no avg
     
     LG_ABUND  = LG_ABUND,
     #LG_ABUND_lag1 = lag(LG_ABUND, 1),
@@ -315,14 +347,15 @@ model.dat3 <- model.dat2 %>%
     #LG_ABUND_avg2lag1  = lag(LG_ABUND_avg2, 1),
     #LG_ABUND_avg2lag2  = lag(LG_ABUND_avg2, 2),
     
-    #ICE  = ICE,
+    ICE  = ICE,
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
     ICE_avg2    = ICE_avg2,
-    ICE_avg2lag1  = lag(ICE_avg2, 1),
+    #ICE_avg2lag1  = lag(ICE_avg2, 1),
     #ICE_avg2lag2  = lag(ICE_avg2, 2),
     
-    TOCC_avg2  = TOCC,
+    TOCC  = TOCC,
+    TOCC_avg2 = TOCC_avg2,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
     TOCC_avg2lag1    = lag(TOCC_avg2, 1)
@@ -333,16 +366,16 @@ model.dat3 <- model.dat2 %>%
   dplyr::select(
     YEAR, SAM,
     
-    INST1_ABUND,
+    COHORT_ABUND,
     
     LG_ABUND, LG_ABUND_avg2,
     #LG_ABUND_avg2lag2, 
    #LG_ABUND_lag1, LG_ABUND_lag2, 
     
-    ICE_avg2, ICE_avg2lag1,
+    ICE, ICE_avg2,
    #ICE_lag1, ICE_lag2, ICE_avg2lag2,
     
-    TOCC_avg2, TOCC_avg2lag1,
+    TOCC_avg2, TOCC,
    #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
 
@@ -418,7 +451,7 @@ safe_cv_rmse <- function(fml,
 response <- "SAM"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",    names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND", names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("COHORT_ABUND", names(model.dat3))])
 tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",        names(model.dat3))])
 ice.pars  <- c(NA, names(model.dat3)[grep("ICE",         names(model.dat3))])
 
@@ -432,7 +465,6 @@ combos <- tidyr::expand_grid(
 
 safe_gamm <- purrr::safely(gamm)
 
-## 6a. Initial fits: AICc only, no CV ------------------------------------
 fits_initial <- purrr::pmap_dfr(
   combos,
   function(lg, sm, ice, tocc) {
@@ -465,9 +497,16 @@ fits_initial <- purrr::pmap_dfr(
         GCV       = NA_real_,
         cv_rmse   = NA_real_,
         edf_total = NA_real_,
+        phi       = NA_real_,
         error     = conditionMessage(fit$error)
       ))
     }
+    
+    # extract AR(1) parameter (phi)
+    phi_val <- tryCatch(
+      as.numeric(coef(fit$result$lme$modelStruct$corStruct, unconstrained = FALSE)),
+      error = function(e) NA_real_
+    )
     
     tibble::tibble(
       sm_term   = sm,
@@ -479,6 +518,7 @@ fits_initial <- purrr::pmap_dfr(
       GCV       = fit$result$gcv.ubre,
       cv_rmse   = NA_real_,
       edf_total = sum(fit$result$gam$edf),
+      phi       = phi_val,
       error     = NA_character_
     )
   }
@@ -535,16 +575,44 @@ read.csv("./Maturity research/Output/SNOW_male_SAM_modelselection.csv")
 
 # fit model
 mod <- gamm(
-  SAM ~ s(INST1_ABUND, k = 4) +
-    s(LG_ABUND_avg2,    k = 4)+
-    s(ICE_avg2lag1, k = 4),
+  SAM ~ s(COHORT_ABUND, k = 4) +
+    s(LG_ABUND_avg2,    k = 4),
+    #s(ICE_avg2lag1, k = 4),
     #s(TOCC_avg2, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian()
 )
 
+
+saveRDS(mod, "./Maturity research/Models/SNOW_maleSAM_gamm.rda")
+
 diagnose.gamm(mod)
+
+
+# plot facetted smooths
+sm.dat <- smooth_estimates(mod) %>%
+  pivot_longer(., cols = 6:ncol(.), names_to = "resp", values_to = "value")
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 2,
+    labeller = as_labeller(c(
+      "s(COHORT_ABUND)"    = "Male cohort abundance",
+      "s(LG_ABUND_avg2)"   = "Large male abundance (2-year avg)"
+    )))+ 
+  theme_bw()+
+  ylab("Partial effect")+
+  xlab("Value")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14))
+
+ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots.png", width =8, height = 7)
 
 # PROP_INDUSTRY PREFERRED ----
 # Mature abundance >=101 SH2
@@ -589,12 +657,13 @@ ggsave("./Maturity research/Figures/SNOW_male_propindpref.png", width = 9, heigh
 
 indpref.dat <- right_join(ind.pref, all.mat) %>%
                   filter(YEAR >= 1989) %>%
-               right_join(model.dat %>% dplyr::select(!SAM))
+               right_join(model.dat %>% dplyr::select(!SAM)) %>%
+              full_join(expand.grid(YEAR = 2020))
 
-ggplot(indpref.dat, aes(YEAR, PROP_INDPREF))+
-  geom_line()+
-  geom_point()+
-  theme_bw()
+# Add indpref to model dat from above
+model.dat$PMAT_INDPREF <- indpref.dat$PROP_INDPREF
+
+write.csv(model.dat, "./Maturity research/Output/SNOW_male_modeldata.csv")
 
 M <- cor(indpref.dat %>% dplyr::select(!c(YEAR, IND_PREF, ALL_MAT, PROP_INDPREF)), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
@@ -613,8 +682,8 @@ model.dat2 <- indpref.dat %>%
     # 2‑ and 3‑year running means
     ICE_avg2        = zoo::rollmean(ICE,         k = 2, fill = NA, align = "right"),
     #ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
-    INST1_ABUND_avg2= zoo::rollmean(INST1_ABUND, k = 2, fill = NA, align = "right"),
-    #INST1_ABUND_avg3= zoo::rollmean(INST1_ABUND, k = 3, fill = NA, align = "right"),
+    COHORT_ABUND_avg2= zoo::rollmean(COHORT_ABUND, k = 2, fill = NA, align = "right"),
+    #COHORT_ABUND_avg3= zoo::rollmean(COHORT_ABUND, k = 3, fill = NA, align = "right"),
     LG_ABUND_avg2   = zoo::rollmean(LG_ABUND,    k = 2, fill = NA, align = "right"),
     #LG_ABUND_avg3   = zoo::rollmean(LG_ABUND,    k = 3, fill = NA, align = "right"),
     TOCC_avg2       = zoo::rollmean(TOCC,        k = 2, fill = NA, align = "right"),
@@ -693,7 +762,7 @@ model.dat3 <- model.dat2 %>%
   mutate(
     #SAM = log(SAM),
     
-    INST1_ABUND = INST1_ABUND, # hard coding to lag0, no avg
+    COHORT_ABUND = COHORT_ABUND, # hard coding to lag0, no avg
     
     LG_ABUND_lag1  = lag(LG_ABUND, 1),
     #LG_ABUND_lag1 = lag(LG_ABUND, 1),
@@ -705,14 +774,14 @@ model.dat3 <- model.dat2 %>%
     ICE_avg2  = ICE_avg2,
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
-    ICE_avg2lag1    = lag(ICE_avg2, 1),
+    ICE   = ICE,
     #ICE_avg2lag1  = lag(ICE_avg2, 1),
     #ICE_avg2lag2  = lag(ICE_avg2, 2),
     
     TOCC_avg2  = TOCC_avg2,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
-    TOCC_avg2lag1    = lag(TOCC_avg2,1)
+    TOCC    = TOCC
     #TOCC_avg2lag1  = lag(TOCC_avg2, 1),
     #TOCC_avg2lag2  = lag(TOCC_avg2, 2),
     
@@ -720,16 +789,16 @@ model.dat3 <- model.dat2 %>%
   dplyr::select(
     YEAR, PROP_INDPREF, ALL_MAT, IND_PREF,
     
-    INST1_ABUND,
+    COHORT_ABUND,
     
     LG_ABUND_lag1, LG_ABUND_avg2,
     #LG_ABUND_avg2lag2, 
     #LG_ABUND_lag1, LG_ABUND_lag2, 
     
-    ICE_avg2, ICE_avg2lag1,
+    ICE_avg2, ICE,
     #ICE_lag1, ICE_lag2, ICE_avg2lag2,
     
-    TOCC_avg2, TOCC_avg2lag1,
+    TOCC, TOCC_avg2,
     #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
 
@@ -808,7 +877,7 @@ safe_cv_rmse <- function(fml,
 response <- "cbind(IND_PREF, ALL_MAT - IND_PREF)"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",    names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND", names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("COHORT_ABUND", names(model.dat3))])
 tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",        names(model.dat3))])
 ice.pars  <- c(NA, names(model.dat3)[grep("ICE",         names(model.dat3))])
 
@@ -903,17 +972,23 @@ fits_ranked <- fits %>%
 fits_ranked
 
 write.csv(fits_ranked, "./Maturity research/Output/SNOW_male_indpref_modelselection.csv")
+read.csv("./Maturity research/Output/SNOW_male_indpref_modelselection.csv")
 
 # fit model  ----
 mod1 <- gam(
   cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
-    s(INST1_ABUND, k = 4)+
-    s(LG_ABUND_avg2, k =4) + 
-    s(ICE_avg2, k = 4),
+    s(COHORT_ABUND, k = 4)+
+    s(LG_ABUND_avg2, k =4),
+    #s(ICE_avg2, k = 4),
   data   = model.dat3,
   family = quasibinomial(link = "logit"),
   method = "REML"
 )
+
+
+saveRDS(mod1, "./Maturity research/Models/SNOW_malepmat101_gam.rda")
+
+
 
 gam.check(mod1)
 summary(mod1)
@@ -926,7 +1001,14 @@ sm.dat <- smooth_estimates(mod1) %>%
 ggplot(sm.dat, aes(x = value, y = .estimate)) +
   geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
   geom_line(color = "cadetblue", linewidth = 1.25) +
-  facet_wrap(~ .smooth, scales = "free_x", nrow = 2) +   # facet by smooth term name
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 2,
+    labeller = as_labeller(c(
+      "s(COHORT_ABUND)"    = "Male cohort abundance",
+      "s(LG_ABUND_avg2)"   = "Large male abundance (2-year avg)"
+    )))+ 
   theme_bw()+
   ylab("Partial effect")+
   xlab("Value")+

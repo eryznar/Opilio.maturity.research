@@ -104,8 +104,8 @@ instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
                                     size_min = 35, size_max = 45,  sex = "female", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
-  reframe(FEM_INST1_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, FEM_INST1_ABUND) 
+  reframe(FEM_COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, FEM_COHORT_ABUND) 
 
 abund.dat <- right_join(bioabund.lg.sel, bioabund.matfem.sel) %>%
   right_join(., instar1) 
@@ -136,6 +136,8 @@ fem.model.dat <- right_join(SAM.df, ice) %>%
   filter(YEAR >=1989) %>%
   dplyr::select(!c(SPECIES, DISTRICT))
 
+write.csv(fem.model.dat, "./Maturity research/Output/SNOW_female_modeldata.csv")
+
 M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
                    type = "upper",
@@ -144,13 +146,26 @@ corrplot::corrplot(M,
                    addCoef.col = "black") 
 
 femdat.long <- fem.model.dat %>%
+  dplyr::select(!c(PMAT_5565, MATURE, IMMATURE, TOT_CRAB, SAM)) %>%
+  rename("Large male abundance (≥95mm)" = "MALE_LG_ABUND",
+         "Mature female abundance" = "FEM_MAT_ABUND",
+         "Female cohort abundance (35-45mm)" = "FEM_COHORT_ABUND",
+         "Ice % cover" = "ICE",
+         "Temperature occupied" = "FEM_TOCC") %>%
   pivot_longer(!YEAR, names_to = "Parameter", values_to = "Value") 
 
 ggplot(femdat.long, aes(YEAR, Value))+
   geom_line()+
   geom_point()+
-  facet_wrap(~Parameter, scales = "free_y")+
-  theme_bw()
+  facet_wrap(~Parameter, scales = "free_y", ncol = 2)+
+  theme_bw()+
+  xlab("Year")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 13))
+
+ggsave("./Maturity research/Figures/SNOW_female_analysis_TS.png", width = 8, height = 6)
+
 
 ## ------------------------------------------------------------
 ## 2) Build running means (and keep in one object)
@@ -163,8 +178,8 @@ fem.model.dat2 <- fem.model.dat %>%
     # 2‑ and 3‑year running means
     ICE_avg2        = zoo::rollmean(ICE,         k = 2, fill = NA, align = "right"),
     #ICE_avg3        = zoo::rollmean(ICE,         k = 3, fill = NA, align = "right"),
-    FEM_INST1_ABUND_avg2= zoo::rollmean(FEM_INST1_ABUND, k = 2, fill = NA, align = "right"),
-    #FEM_INST1_ABUND_avg3= zoo::rollmean(FEM_INST1_ABUND, k = 3, fill = NA, align = "right"),
+    FEM_COHORT_ABUND_avg2= zoo::rollmean(FEM_COHORT_ABUND, k = 2, fill = NA, align = "right"),
+    #FEM_COHORT_ABUND_avg3= zoo::rollmean(FEM_COHORT_ABUND, k = 3, fill = NA, align = "right"),
     MALE_LG_ABUND_avg2   = zoo::rollmean(MALE_LG_ABUND,    k = 2, fill = NA, align = "right"),
     #MALE_LG_ABUND_avg3   = zoo::rollmean(MALE_LG_ABUND,    k = 3, fill = NA, align = "right"),
     FEM_TOCC_avg2       = zoo::rollmean(FEM_TOCC,        k = 2, fill = NA, align = "right"),
@@ -173,12 +188,45 @@ fem.model.dat2 <- fem.model.dat %>%
     #FEM_MAT_ABUND_avg3 = zoo::rollmean(FEM_MAT_ABUND,    k = 3, fill = NA, align = "right")
   )
 
-M <- cor(fem.model.dat2 %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
-corrplot::corrplot(M,
-                   type = "upper",
-                   method = "square",
-                   order  = "hclust",      # cluster variables
-                   addCoef.col = "black") 
+cors <- fem.model.dat2 %>%
+  dplyr::select(!c(YEAR, SAM, PMAT_5565, TOT_CRAB, MATURE, IMMATURE)) %>%
+  mutate(
+    MALE_LG_ABUND_lag1 = lag(MALE_LG_ABUND, 1),
+    MALE_LG_ABUND_lag2 = lag(MALE_LG_ABUND, 2),
+    MALE_LG_ABUND_avg2lag1 = lag(MALE_LG_ABUND_avg2, 1),
+    FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
+    FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
+    FEM_MAT_ABUND_avg2lag1 = lag(FEM_MAT_ABUND_avg2, 1),
+    FEM_COHORT_ABUND_lag1 = lag(FEM_COHORT_ABUND, 1),
+    FEM_COHORT_ABUND_lag2 = lag(FEM_COHORT_ABUND, 2),
+    FEM_COHORT_ABUND_avg2lag1 = lag(FEM_COHORT_ABUND_avg2, 1),
+    ICE_lag1 = lag(ICE, 1),
+    ICE_lag2 = lag(ICE, 2),
+    ICE_avg2lag1 = lag(ICE_avg2, 1),
+    FEM_TOCC_lag1 = lag(FEM_TOCC, 1),
+    FEM_TOCC_lag2 = lag(FEM_TOCC, 2),
+    FEM_TOCC_avg2lag1 = lag(FEM_TOCC_avg2, 1),
+  ) %>%
+  sort(colnames(.))
+
+M <- cor(cors %>% na.omit(), use = "pairwise.complete.obs", method = "pearson") 
+  
+M <- M[ , sort(colnames(M))]      # reorder columns
+M <- M[sort(rownames(M)), ]   
+ 
+corrplot::corrplot(
+  M,
+  type      = "upper",
+  method    = "color",      # or "square"
+  order     = "alphabet",
+  tl.col    = "black",      # label color
+  tl.cex    = 0.6,          # label size
+  tl.srt    = 45,           # label rotation
+  addCoef.col = NA,         # no numbers on the plot
+  number.cex  = 0.4,        # (used if you keep numbers)
+  mar = c(0,0,1,0)          # smaller margins
+)
+
 
 # ------------------------------------------
 ## SAM 
@@ -250,7 +298,7 @@ model.dat3 <- fem.model.dat2 %>%
   mutate(
     #SAM = log(SAM),
     
-    FEM_INST1_ABUND = FEM_INST1_ABUND,
+    FEM_COHORT_ABUND = FEM_COHORT_ABUND,
     
     FEM_MAT_ABUND  = FEM_MAT_ABUND,
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
@@ -288,7 +336,7 @@ model.dat3 <- fem.model.dat2 %>%
     YEAR, SAM,
     PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
     
-    FEM_INST1_ABUND,
+    FEM_COHORT_ABUND,
     
     FEM_MAT_ABUND, FEM_MAT_ABUND_lag2,
     #FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, FEM_MAT_ABUND_avg2lag2,
@@ -368,7 +416,7 @@ response <- "SAM"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
 mat.pars  <- c(NA, names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("COHORT_ABUND",names(model.dat3))])
 tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
 ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
 
@@ -423,6 +471,7 @@ fits_initial <- purrr::pmap_dfr(
         cv_rmse   = NA_real_,
         R2        = NA_real_,
         edf_total = NA_real_,
+        phi       = NA_real_,
         ok_resid  = FALSE,
         ok_acf    = FALSE,
         error     = conditionMessage(fit$error)
@@ -440,6 +489,13 @@ fits_initial <- purrr::pmap_dfr(
     
     gam_sum <- summary(fit$result$gam)
     
+    # extract AR(1) parameter phi
+    phi_val <- tryCatch(
+      as.numeric(coef(fit$result$lme$modelStruct$corStruct,
+                      unconstrained = FALSE)),
+      error = function(e) NA_real_
+    )
+    
     tibble::tibble(
       sm_term   = sm,
       mat_term  = mat,
@@ -447,11 +503,12 @@ fits_initial <- purrr::pmap_dfr(
       ice_term  = ice,
       tocc_term = tocc,
       k_terms   = length(terms),
-      AICc      = MuMIn::AICc(fit$result$lme),  # AICc only
+      AICc      = MuMIn::AICc(fit$result$lme),
       GCV       = fit$result$gcv.ubre,
-      cv_rmse   = NA_real_,                     # filled later
+      cv_rmse   = NA_real_,
       R2        = gam_sum$r.sq,
       edf_total = sum(fit$result$gam$edf),
+      phi       = phi_val,
       ok_resid  = ok_resid,
       ok_acf    = ok_acf,
       error     = NA_character_
@@ -500,7 +557,7 @@ fits_ranked <- fits_AICc_cv %>%
   mutate(
     dRMSE   = cv_rmse - min(cv_rmse, na.rm = TRUE),
     rmse_sd = sd(cv_rmse, na.rm = TRUE),
-    keep_RMSE = dRMSE <= 2 * rmse_sd
+    keep_RMSE = dRMSE <= 3 * rmse_sd
   ) %>%
   filter(keep_RMSE) %>%
   dplyr::select(!c(ok_resid, ok_acf, error, rmse_sd, keep_RMSE)) %>%
@@ -513,6 +570,18 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 mod1 <- gamm(
   SAM ~ 
     s(FEM_MAT_ABUND_lag2, k = 4),
+  correlation = corAR1(),
+  data        = model.dat3,
+  family      = gaussian(),
+  method = "REML"
+)
+saveRDS(mod1, "./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
+
+mod1 <- gamm(
+  SAM ~ 
+    s(FEM_MAT_ABUND_lag2, k = 4)+
+  s(MALE_LG_ABUND, k = 4)+
+  s(ICE_avg2, k=4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian(),
@@ -531,12 +600,18 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
   facet_wrap(~ .smooth, scales = "free_x", nrow = 2) +   # facet by smooth term name
   theme_bw()+
   ylab("Partial effect")+
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 1,
+    labeller = as_labeller(c(
+      "s(FEM_MAT_ABUND_lag2)"    = "Mature female abundance (2-year lag)")))+ 
   xlab("Value")+
   theme(axis.text = element_text(size = 14),
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
-ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots.png", width = 8, height = 7)
+ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots.png", width = 8, height = 5)
 
 # ------------------------------------------
 ## PMAT_5565
@@ -599,7 +674,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
   mutate(
     #SAM = log(SAM),
     
-    FEM_INST1_ABUND = FEM_INST1_ABUND,
+    FEM_COHORT_ABUND = FEM_COHORT_ABUND,
     
     #FEM_MAT_ABUND  = FEM_MAT_ABUND,
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
@@ -638,7 +713,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
     YEAR, SAM,
     PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
     
-    FEM_INST1_ABUND,
+    FEM_COHORT_ABUND,
     
     FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, 
     #FEM_MAT_ABUND_avg2lag2, FEM_MAT_ABUND, FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_avg2lag1,
@@ -729,7 +804,7 @@ response_counts <- "cbind(MATURE, IMMATURE)"
 
 lg.pars   <- c(NA, names(model.dat3)[grep("LG_ABUND",   names(model.dat3))])
 mat.pars  <- c(NA, names(model.dat3)[grep("MAT_ABUND",  names(model.dat3))])
-sm.pars   <- c(NA, names(model.dat3)[grep("INST1_ABUND",names(model.dat3))])
+sm.pars   <- c(NA, names(model.dat3)[grep("COHORT_ABUND",names(model.dat3))])
 tocc.pars <- c(NA, names(model.dat3)[grep("TOCC",       names(model.dat3))])
 ice.pars  <- c(NA, names(model.dat3)[grep("ICE",        names(model.dat3))])
 
@@ -881,6 +956,7 @@ write.csv(fits_ranked, "./Maturity research/Output/snow_female_pmat5565_modelsel
 # Fit best model
 mod1 <- gam(
   cbind(MATURE, IMMATURE) ~ 
+    #s(FEM_MAT_ABUND_lag2, k =4) +
       s(MALE_LG_ABUND_avg2lag1, k =4) + 
     s(ICE_avg2, k = 4),
   data   = model.dat3,
@@ -888,9 +964,12 @@ mod1 <- gam(
   method = "REML"
 )
 
+saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
+
+
 gam.check(mod1)
 summary(mod1)
-acf(mod1$residuals)
+500acf(mod1$residuals)
 
 # plot facetted smooths
 sm.dat <- smooth_estimates(mod1) %>%
@@ -899,7 +978,14 @@ sm.dat <- smooth_estimates(mod1) %>%
 ggplot(sm.dat, aes(x = value, y = .estimate)) +
   geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
   geom_line(color = "cadetblue", linewidth = 1.25) +
-  facet_wrap(~ .smooth, scales = "free_x", nrow = 2) +   # facet by smooth term name
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 2,
+    # labeller = as_labeller(c(
+    #   "s(ICE_avg2)"    = "Ice % cover (2-year avg)",
+    #   "s(MALE_LG_ABUND_avg2lag1)"   = "Large male abundance (2-year avg, 1-year lag)"))
+    )+ 
   theme_bw()+
   ylab("Partial effect")+
   xlab("Value")+
@@ -908,3 +994,25 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         strip.text = element_text(size = 14))
 
 ggsave("./Maturity research/Figures/SNOW_female_pmat5565_effectplots.png", width = 8, height = 7)
+
+# Data actually used in the model (after any na.omit etc.)
+dat_use <- mod1$model
+
+# Deviance residuals in the same order/rows
+res <- residuals(mod1, type = "deviance")
+
+par(mfrow = c(1, 2))
+
+with(dat_use, {
+  plot(MALE_LG_ABUND_avg2lag1, res,
+       xlab = "MALE_LG_ABUND_avg2lag1",
+       ylab = "Deviance residuals")
+  abline(h = 0, col = "red", lty = 2)
+  
+  plot(ICE_avg2, res,
+       xlab = "ICE_avg2",
+       ylab = "Deviance residuals")
+  abline(h = 0, col = "red", lty = 2)
+})
+
+par(mfrow = c(1, 1))
