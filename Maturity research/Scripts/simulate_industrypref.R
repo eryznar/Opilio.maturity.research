@@ -48,6 +48,24 @@ cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
   dplyr::select(YEAR, SIZE_1MM, COHORT_ABUND)  %>%
   filter(YEAR >= 1989)
 
+# Exploitation rate
+bioabund.indpref <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                             size_min = 101, size_max = NULL,  sex = "male") %>%
+  mutate(ABUNDANCE = ABUNDANCE/1e6,
+         BIOMASS = BIOMASS_MT/1000) %>% # convert to kt
+  dplyr::select(YEAR, ABUNDANCE, BIOMASS)
+
+df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") %>%
+  mutate(directedfish_biomass = Retained_kt+ Discarded_males_kt) %>% #
+  dplyr::select(Year, directedfish_biomass) %>%
+  rename(YEAR = Year, DF_BIOMASS = directedfish_biomass) %>%
+  right_join(., bioabund.indpref) %>% # to calculate exploitation rate
+  mutate(DF_BIOMASS = case_when((YEAR %in% c(2020, 2022:2023)) ~ NA,
+                                TRUE ~ DF_BIOMASS),
+         EXP_RATE = DF_BIOMASS/BIOMASS) %>%
+  dplyr::select(YEAR, DF_BIOMASS, EXP_RATE) %>%
+  na.omit()
+
 ## PREPARE OGIVE MATRIX ----
 ogive <- ogive_raw %>%
   dplyr::select(YEAR, SIZE_5MM, PROP_MATURE_mean) %>%
