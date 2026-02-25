@@ -1,3 +1,8 @@
+# LOAD LIBS/PARAMS ---------------------------------------------------------------------------------------
+source("./Maturity research/Scripts/load_libs_params.R")
+
+
+
 model <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
 
 # Selectivity
@@ -37,6 +42,7 @@ pmat.sim <- predict(model, sub1, type = "response")
 # Ogives ----
 ogives <- pmat.sim %>%
   group_by(YEAR, SPECIES, DISTRICT, SIZE_5MM) %>%
+  filter(!c(YEAR == 2025 & SIZE_5MM == 172.5)) %>%
   reframe(
     denom = sum(SAMPLING_FACTOR, na.rm = TRUE),
     num   = sum(est * SAMPLING_FACTOR, na.rm = TRUE),
@@ -51,7 +57,7 @@ ggplot(ogives, aes(SIZE_5MM, PROP_MATURE))+
   geom_rug()+
   geom_hline(yintercept = 0.5)
 
-write.csv(ogives, "./Maturity research/SNOW_maleogives_withselectivity.csv")
+write.csv(ogives, "./Maturity research/Data/SNOW_maleogives_withselectivity.csv")
 
 
 # SAM ----

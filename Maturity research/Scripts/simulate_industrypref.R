@@ -37,7 +37,7 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
 mod <- readRDS("./Maturity research/Models/SNOW_malepmat101_gam.rda")
 
 # Ogives
-ogive_raw <- read.csv("./Maturity research/Data/snow_maleogives.csv")
+ogive_raw <- read.csv("./Maturity research/Data/SNOW_maleogives_withselectivity.csv")
 
 # Historical 40-60mm survey abundance by 1mm size bins
 cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
@@ -68,8 +68,8 @@ df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") 
 
 ## PREPARE OGIVE MATRIX ----
 ogive <- ogive_raw %>%
-  dplyr::select(YEAR, SIZE_5MM, PROP_MATURE_mean) %>%
-  rename(p_term = PROP_MATURE_mean)
+  dplyr::select(YEAR, SIZE_5MM, PROP_MATURE) %>%
+  rename(p_term = PROP_MATURE)
 
 years_vec <- sort(unique(ogive$YEAR))
 sizes_5   <- sort(unique(ogive$SIZE_5MM))
@@ -95,29 +95,17 @@ n_size    <- length(size_bins)
 
 
 get_p_term_year <- function(year_val, size_bins, ogive_mat) {
-  # rownames are actual years: 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-  # 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009, 2010, 2011, 2013, 2015, 2017,
-  # 2018, 2019, 2021, 2022, 2023, 2024, 2025
-  
   ogive_years <- as.numeric(rownames(ogive_mat))
   
-  # 1. clamp year_val to overall range
-  y_clamp <- max(min(year_val, max(ogive_years)), min(ogive_years))
+  # if exact year not present, return NA vector
+  if (!year_val %in% ogive_years) {
+    return(rep(NA_real_, length(size_bins)))
+  }
   
-  # 2. choose index of *closest* available year (handles gaps, e.g. 2008, 2012, 2014, 2016, 2020)
-  row_idx <- which.min(abs(ogive_years - y_clamp))
+  row_idx <- which(ogive_years == year_val)
   
-  # safety
-  if (length(row_idx) != 1L || is.na(row_idx))
-    stop("Row index problem in get_p_term_year")
-  
-  # numeric 5‑mm midpoints
   valid_5mm <- as.numeric(colnames(ogive_mat))
-  
-  # for each 1‑mm size, choose index of closest 5‑mm bin
-  col_idx <- sapply(size_bins, function(sz) {
-    which.min(abs(valid_5mm - sz))
-  })
+  col_idx <- sapply(size_bins, function(sz) which.min(abs(valid_5mm - sz)))
   
   p_vec <- ogive_mat[row_idx, col_idx]
   p_vec[is.na(p_vec)] <- 0
@@ -186,6 +174,23 @@ project_one_year <- function(N_t,
   N_post_fish[large_idx] <- N_grown[large_idx] - catch_large
   
   p_term <- get_p_term_year(year_val, size_bins, ogive_mat)
+  
+  if (all(is.na(p_term))) {
+    # no ogive this year: carry N_forward but mark outputs as NA
+    term_molts <- rep(0, length(size_bins))
+    N_after_tm <- N_post_fish
+    cohort_abund_t  <- sum(N_post_fish[size_bins >= 40 & size_bins <= 60])
+    lg_abund_avg2_t <- sum(N_post_fish[size_bins >= 95])
+    
+    return(list(
+      N_next          = N_after_tm,
+      term_molts      = term_molts,
+      catch_large     = catch_large,
+      cohort_abund_t  = cohort_abund_t,
+      lg_abund_avg2_t = lg_abund_avg2_t,
+      has_ogive       = FALSE
+    ))
+  }
   
   idx_101 <- which(size_bins == 101)
   if (length(idx_101) == 1) {
@@ -259,6 +264,14 @@ simulate_scenario <- function(expl_rate,
     )
     
     tm <- res$term_molts
+    if (!is.null(res$has_ogive) && !res$has_ogive) {
+      prop_tm_above101[t] <- NA
+    } else {
+      idx_large_tm <- which(size_bins >= 101)
+      total_tm <- sum(tm)
+      tm_above <- sum(tm[idx_large_tm])
+      prop_tm_above101[t] <- if (total_tm > 0) tm_above / total_tm else NA
+    }
     idx_large_tm <- which(size_bins >= 101)
     total_tm <- sum(tm)
     tm_above <- sum(tm[idx_large_tm])
@@ -324,18 +337,14 @@ sim_df %>%
   group_by(exploitation, year) %>%
   reframe(pind = mean(prop_tm_above101),
           N = n(),
-          se = sd(prop_tm_above101)/sqrt(N)) -> sum_df
+          se = sd(prop_tm_above101)/sqrt(N)) %>%
+  full_join(., expand.grid(year = seq(min(.$year), max(.$year)), exploitation = expl_vec)) -> sum_df
 
-ggplot(sim_df, aes(year, prop_tm_above101, color = as.factor(exploitation)))+
+
+ggplot(sum_df %>% filter(exploitation !=1), aes(year, pind, color = as.factor(exploitation)))+
   geom_line()+
   geom_point()+
-  geom_smooth(method = "lm")+
-  theme_bw()
-
-ggplot(sum_df, aes(year, pind, color = as.factor(exploitation)))+
-  geom_line()+
-  geom_point()+
-  geom_errorbar(sum_df, mapping = aes(year, ymin = pind-se, ymax = pind+se, color = as.factor(exploitation)))+
+  geom_errorbar(sum_df%>% filter(exploitation !=1), mapping = aes(year, ymin = pind-se, ymax = pind+se, color = as.factor(exploitation)))+
   theme_bw()
 
 
