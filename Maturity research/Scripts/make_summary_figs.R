@@ -142,20 +142,6 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 
 ggsave("./Maturity research/Figures/SNOW_maleSAM_diagnostics.png", width = 8, height = 7)
 
-pdat <- model.dat3
-pdat$pp <- predict(mod, pdat, type = "response")
-
-ggplot(na.omit(pdat), aes(x = SAM, y = pp, fill = YEAR)) +
-  geom_point(shape = 21, stroke = NA, size = 3) +
-  geom_abline(slope = 1, intercept = 0)+
-  #coord_equal(xlim = c(0,1), ylim = c(0,1)) +
-  labs(x = "Observed", y = "Predicted")+
-  scale_fill_viridis_c()+
-  theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14)) ->  maleSAM
-
 # MALE PMAT 101 DIAGNOSTICS ----
 mod <- readRDS("./Maturity research/Models/SNOW_malepmat101_gam.rda")
 
@@ -215,21 +201,6 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 
 ggsave("./Maturity research/Figures/SNOW_malepmat101_diagnostics.png", width = 8, height = 7)
 
-pdat <-model.dat3
-pdat$pp <- predict(mod, pdat, type = "response")
-
-ggplot(na.omit(pdat), aes(x = PROP_INDPREF, y = pp, fill = YEAR)) +
-  geom_point(shape = 21, stroke = NA, size = 3) +
-  geom_abline(slope = 1, intercept = 0)+
-  #coord_equal(xlim = c(0,1), ylim = c(0,1)) +
-  labs(x = "Observed", y = "Predicted")+
-  scale_fill_viridis_c()+
-  theme_bw()+
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14)) -> ind.pref
-
-maleSAM+ind.pref
 
 # FEMALE SAM DIAGNOSTICS ----
 mod <- readRDS("./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
@@ -288,19 +259,6 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 
 ggsave("./Maturity research/Figures/SNOW_femaleSAM_diagnostics.png", width = 8, height = 7)
 
-pdat <- model.dat3
-pdat$pp <- predict(mod, pdat, type = "response")
-
-ggplot(na.omit(pdat), aes(x = SAM, y = pp, fill = YEAR)) +
-  geom_point(shape = 21, stroke = NA, size = 3) +
-  geom_abline(slope = 1, intercept = 0)+
-  #coord_equal(xlim = c(0,1), ylim = c(0,1)) +
-  labs(x = "Observed", y = "Predicted")+
-  scale_fill_viridis_c()+
-  theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14)) 
 
 # FEMALE PMAT 5565 DIAGNOSTICS ----
 mod <- readRDS("./Maturity research/Models/SNOW_femalepmat5565_gam.rda")

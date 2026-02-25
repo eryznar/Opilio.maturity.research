@@ -12,7 +12,7 @@ source("./Maturity research/Scripts/load_libs_params.R")
 
 # LOAD DATA AND PROCESS ----------------------------------------------------------------------------------
 # sdmTMB model
-mod <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
+#mod <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
 
 # SAM
 SAM.dat <- read.csv("./Maturity research/Data/SNOW_maleSAM.csv") %>%

@@ -692,7 +692,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
     MALE_LG_ABUND_avg2 = MALE_LG_ABUND_avg2,
     MALE_LG_ABUND_lag2  = lag(MALE_LG_ABUND, 2),
     
-    ICE  = ICE,
+    ICE_lag1  = lag(ICE, 1),
     #ICE_lag1 = lag(ICE, 1),
     #ICE_lag2 = lag(ICE, 2),
     # ICE_avg2    = ICE_avg2,
@@ -721,7 +721,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
     MALE_LG_ABUND_avg2lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2,
    # MALE_LG_ABUND, MALE_LG_ABUND_lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2, 
     
-    ICE, ICE_avg2, 
+    ICE_lag1, ICE_avg2, 
     #ICE, ICE_lag2, ICE_avg2, ICE_avg2lag1,
     
     FEM_TOCC_lag1, FEM_TOCC_avg2, 
@@ -966,10 +966,20 @@ mod1 <- gam(
 
 saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
 
-
+# Fit best model
+mod1 <- gam(
+  cbind(MATURE, IMMATURE) ~ 
+    #s(FEM_MAT_ABUND_lag2, k =4) +
+    s(MALE_LG_ABUND_avg2lag1, k =4) + 
+    s(ICE_avg2, k = 4)+
+    s(FEM_TOCC_avg2, k=4),
+  data   = model.dat3,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
 gam.check(mod1)
 summary(mod1)
-500acf(mod1$residuals)
+acf(mod1$residuals)
 
 # plot facetted smooths
 sm.dat <- smooth_estimates(mod1) %>%

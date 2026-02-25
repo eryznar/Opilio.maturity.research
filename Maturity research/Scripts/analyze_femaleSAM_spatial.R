@@ -116,12 +116,21 @@ ice <- read.csv(paste0("./Maturity research/Output/spatial_ice_means_1980-", cur
   rename(YEAR = year, LATITUDE = latitude, LONGITUDE = longitude, ICE = value)
 
 # Load temperature occupied data
-t_occ <- read.csv("./Maturity research/Data/BT_occupied_females_spatial.csv") %>%
-  rename(FEM_TOCC = temp_occ) %>%
-  dplyr::select(!X)
+t_occ <- spec.dat.sel$haul %>%
+  dplyr::select(YEAR, STATION_ID, GEAR_TEMPERATURE) %>%
+  rename(FEM_TOCC = GEAR_TEMPERATURE)
+
 
 # Bind all dataframes into df for modeling and plot
 fem.model.dat <- right_join(SAM.spatdf,t_occ) %>%
+  st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
+  st_transform(., crs = "+proj=utm +zone=2") %>%
+  cbind(st_coordinates(.)) %>%
+  as.data.frame(.) %>%
+  mutate(LATITUDE = Y/1000, # scale to km so values don't get too large
+         LONGITUDE = X/1000,
+         YEAR_F = as.factor(YEAR)) %>%
+  dplyr::select(!c(X, Y, geometry)) %>%
   right_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1))) %>%
   arrange(YEAR) 
 
@@ -150,8 +159,9 @@ fem.model.dat2 <- fem.model.dat %>%
 
 # CCF ----
 dat_ccf <- fem.model.dat2
-vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "STATION_ID", "LATITUDE", "LONGITUDE", "MATURE", "IMMATURE")]
+vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "YEAR_F", "SAM", "PMAT_5565", "STATION_ID", "LATITUDE", "LONGITUDE", "MATURE", "IMMATURE")]
 cc_df   <- data.frame()
+response <- "PMAT_5565"
 for (vv in vars) {
   pp <- dat_ccf[[vv]]
   
@@ -211,12 +221,12 @@ best_lags <- long_df %>%
 model.dat3 <- fem.model.dat2 %>%
   dplyr::select(YEAR, STATION_ID, LATITUDE, LONGITUDE, SAM, PMAT_5565, dplyr::any_of(best_lags$var)) %>%
   arrange(YEAR, STATION_ID) %>%
+  mutate(LGMALE_CPUE_avg3lag3 = lag(LGMALE_CPUE_avg3, 3)) %>%
   dplyr::select(YEAR, SAM, PMAT_5565, STATION_ID, LATITUDE, LONGITUDE, # NA in PMAT is where no crab were caught at that station in that size
                 FEM_TOCC, FEM_TOCC_avg2,
                 INST1_CPUE_avg2, INST1_CPUE,
-                LGMALE_CPUE_avg3, LGMALE_CPUE_avg2,
-                MATFEM_CPUE_avg2, MATFEM_CPUE)
-
+                LGMALE_CPUE_avg3, LGMALE_CPUE_avg3lag3,
+                MATFEM_CPUE_avg2, MATFEM_CPUE_avg3) 
 # CV ----
 k_folds <- 5
 
@@ -332,16 +342,18 @@ fits <- purrr::pmap_dfr(
 
 
 # Fit best model
+fits %>% arrange(cv_rmse, AIC)
 
 # fit model
-mod <- bam(
+mod <- gamm(
   PMAT_5565 ~ 
-    s(INST1_CPUE_avg2,         k = 4) +
-    s(LGMALE_CPUE_avg3, k = 4)+
-    s(MATFEM_CPUE_avg2, k = 4)+
+    s(INST1_CPUE,         k = 4) +
+    s(FEM_TOCC_avg2, k = 4)+
+    s(MATFEM_CPUE_avg3, k = 4)+
     s(LATITUDE, LONGITUDE, bs = "tp"),
   data        = model.dat3,
-  family      = betar(link = "logit"),
+  correlation = corAR1(),
+  family      = gaussian(),
 )
 
 
