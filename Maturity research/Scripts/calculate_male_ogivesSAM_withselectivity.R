@@ -51,7 +51,7 @@ ggplot(ogives, aes(SIZE_5MM, PROP_MATURE))+
   geom_rug()+
   geom_hline(yintercept = 0.5)
 
-#write.csv(ogives, "./Maturity research/SNOW_femaleSAM.csv")
+write.csv(ogives, "./Maturity research/SNOW_maleogives_withselectivity.csv")
 
 
 # SAM ----
