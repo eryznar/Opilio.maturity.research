@@ -418,18 +418,19 @@ sum_df <- sim_df %>%
     N    = dplyr::n(),
     se   = stats::sd(prop_tm_above101)/sqrt(N),
     .groups = "drop"
-  )
+  ) %>%
+  filter(time_step >=5)
 
 ggplot(sum_df %>% dplyr::filter(exploitation != 1),
        aes(time_step, pind, color = as.factor(exploitation))) +
   geom_line() +
-  facet_wrap(~exploitation)+
+  #facet_wrap(~exploitation, scales = "free_y")+
   geom_point() +
-  ggtitle("Cumulative proportion mature >=101mm")+
+  ggtitle("Cumulative proportion mature ≥101mm")+
   geom_errorbar(aes(ymin = pind - se, ymax = pind + se)) +
   theme_bw() +
   labs(x = "Time step (year)",
-       y = "Proportion mature stock >=101",
+       y = "Proportion mature ≥101",
        color = "Exploitation")
 
 
@@ -442,18 +443,19 @@ new_sum_df <- sim_df %>%
     N    = dplyr::n(),
     se   = stats::sd(prop_new_mature_ge101_sim)/sqrt(N),
     .groups = "drop"
-  )
+  ) %>%
+  filter(time_step >=5)
 
 ggplot(new_sum_df %>% dplyr::filter(exploitation != 1),
        aes(time_step, pind, color = as.factor(exploitation))) +
   geom_line() +
-  facet_wrap(~exploitation) +
+  #facet_wrap(~exploitation, scales = "free") +
   geom_point() +
   geom_errorbar(aes(ymin = pind - se, ymax = pind + se)) +
   theme_bw() +
-  ggtitle("Newly mature entering >=101mm")
+  ggtitle("Newly mature entering ≥101mm")+
   labs(x = "Time step (year)",
-       y = "Proportion newly mature >=101",
+       y = "Proportion newly mature ≥101",
        color = "Exploitation")
 
 ## STATE SPACE PLOT ----------------------------------------------------------
@@ -463,10 +465,12 @@ ggplot(sim_df %>% dplyr::filter(!is.na(prop_tm_above101), exploitation !=1),
   facet_wrap(~exploitation) +
   scale_fill_viridis_c() +
   theme_bw() +
-  ggtitle("Cumulative proportion mature >=101mm")+
+  ggtitle("Cumulative proportion mature ≥101mm")+
   labs(x = "40–60 mm cohort abundance",
-       y = ">=95 mm abundance",
-       fill = "Prop mature stock >=101")
+       y = "≥95 mm abundance",
+       fill = "Prop mature ≥101mm")+
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal")
   
 ggplot(sim_df %>%
          dplyr::filter(!is.na(prop_new_mature_ge101_sim),
@@ -476,11 +480,14 @@ ggplot(sim_df %>%
   geom_point(shape = 21, stroke = NA, size = 2, alpha = 0.5) +
   facet_wrap(~exploitation) +
   scale_fill_viridis_c() +
-  ggtitle("Newly mature entering >=101mm")+
+  ggtitle("Newly mature entering ≥101mm")+
   theme_bw() +
   labs(x = "40–60 mm cohort abundance",
-       y = ">=95 mm abundance",
-       fill = "Prop newly mature >=101")
+       y = "≥95 mm abundance",
+       fill = "Prop newly mature ≥101")+
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal")
+
 
 ## GAM vs OGIVE (NEWLY MATURE SCALE) ----------------------------------------
 gam_ogive_df <- sim_df %>%
@@ -495,11 +502,21 @@ gam_ogive_df <- sim_df %>%
   )
 
 ggplot(gam_ogive_df %>% dplyr::filter(exploitation < 1),
-       aes(prop_ge101_gam_mean, prop_ge101_ogive_mean,
-           color = as.factor(exploitation))) +
-  geom_point(alpha = 0.7) +
+       aes(prop_ge101_gam_mean, prop_ge101_ogive_mean)) +
+  geom_point(alpha = 0.5) +
   geom_smooth(se = FALSE, method = "lm") +
   theme_bw() +
-  labs(x = "GAM predicted proportion newly mature >=101",
-       y = "Ogive-implied proportion newly mature >=101",
+  facet_wrap(~exploitation, scales = "free")+
+  labs(x = "GAM predicted proportion newly mature ≥101",
+       y = "Ogive-implied proportion newly mature ≥101",
+       color = "Exploitation")
+
+ggplot(gam_ogive_df %>% dplyr::filter(exploitation < 1),
+       aes(prop_new_mature_ge101_gam, prop_new_mature_ge101_ogive)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE, method = "lm") +
+  theme_bw() +
+  facet_wrap(~exploitation, scales = "free")+
+  labs(x = "GAM predicted proportion newly mature ≥101",
+       y = "Ogive-implied proportion newly mature ≥101",
        color = "Exploitation")
