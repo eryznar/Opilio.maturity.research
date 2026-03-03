@@ -1,16 +1,14 @@
 ## ------------------------------------------------------------
-# PURPOSE: to generate a simulation to assess drivers of declining proportion mature at 101mm
-
+# PURPOSE: simulate drivers of declining proportion mature at 101 mm
 # Author: Emily Ryznar
+## ------------------------------------------------------------
 
-
-# LOAD LIBS/PARAMS ---------------------------------------------------------------------------------------
+# LOAD LIBS/PARAMS -----------------------------------------------------------
 source("./Maturity research/Scripts/load_libs_params.R")
 
 # LOAD MODEL DATA/MODEL ------------------------------------------------------
 m.dat <- read.csv("./Maturity research/Output/indpref_modeldat.csv") %>%
-          dplyr::select(!X) 
-
+  dplyr::select(!X)
 
 # DATA INPUTS ----
 # Specimen data and selectivity
@@ -22,51 +20,66 @@ s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
 
 spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
 
-spec.dat.sel <- spec.dat 
+spec.dat.sel <- spec.dat
 spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
-  mutate(BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5, closed = "left", dig.lab = 4),
-         BIN2 = BIN_5MM) %>%
+  mutate(
+    BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5,
+                        closed = "left", dig.lab = 4),
+    BIN2 = BIN_5MM
+  ) %>%
   separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
-  mutate(LOWER = as.numeric(sub('.', '', LOWER)),
-         UPPER = as.numeric(gsub('.$', '', UPPER)),
-         SIZE_5MM = (UPPER + LOWER)/2) %>%
-  mutate(SEL = predict(s.gam, newdata= ., type = "response"),
-         SAMPLING_FACTOR = SAMPLING_FACTOR/SEL)
+  mutate(
+    LOWER = as.numeric(sub(".", "", LOWER)),
+    UPPER = as.numeric(gsub(".$", "", UPPER)),
+    SIZE_5MM = (UPPER + LOWER) / 2
+  ) %>%
+  mutate(
+    SEL = predict(s.gam, newdata = ., type = "response"),
+    SAMPLING_FACTOR = SAMPLING_FACTOR / SEL
+  )
 
-# Statistical model (pmat_101 GAM)
+# Statistical model (pmat_101 GAM) ----
 mod <- readRDS("./Maturity research/Models/SNOW_malepmat101_gam.rda")
 
-# Ogives
+# Ogives ----
 ogive_raw <- read.csv("./Maturity research/Data/SNOW_maleogives_withselectivity.csv")
 
-# Historical 40-60mm survey abundance by 1mm size bins
-cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                    size_min = 40, size_max = 60,  sex = "male", 
-                                    shell_condition = c("new_hardshell"), bin_1mm = TRUE) %>%
+# Historical 40-60 mm survey abundance by 1mm size bins ----
+cohort <- crabpack::calc_bioabund(
+  crab_data = spec.dat.sel, species = "SNOW",
+  size_min = 40, size_max = 60, sex = "male",
+  shell_condition = c("new_hardshell"), bin_1mm = TRUE
+) %>%
   group_by(YEAR, SIZE_1MM) %>%
-  reframe(COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, SIZE_1MM, COHORT_ABUND)  %>%
+  reframe(COHORT_ABUND = sum(ABUNDANCE) / 1e6) %>%  # convert to kt
+  dplyr::select(YEAR, SIZE_1MM, COHORT_ABUND) %>%
   filter(YEAR >= 1989)
 
-# Exploitation rate
-bioabund.indpref <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                             size_min = 101, size_max = NULL,  sex = "male") %>%
-  mutate(ABUNDANCE = ABUNDANCE/1e6,
-         BIOMASS = BIOMASS_MT/1000) %>% # convert to kt
+# Exploitation rate data (to inform plausible U) ----
+bioabund.indpref <- crabpack::calc_bioabund(
+  crab_data = spec.dat.sel, species = "SNOW",
+  size_min = 101, size_max = NULL, sex = "male"
+) %>%
+  mutate(
+    ABUNDANCE = ABUNDANCE / 1e6,
+    BIOMASS = BIOMASS_MT / 1000          # kt
+  ) %>%
   dplyr::select(YEAR, ABUNDANCE, BIOMASS)
 
 df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") %>%
-  mutate(directedfish_biomass = Retained_kt+ Discarded_males_kt) %>% #
+  mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
   dplyr::select(Year, directedfish_biomass) %>%
   rename(YEAR = Year, DF_BIOMASS = directedfish_biomass) %>%
-  right_join(., bioabund.indpref) %>% # to calculate exploitation rate
-  mutate(DF_BIOMASS = case_when((YEAR %in% c(2020, 2022:2023)) ~ NA,
-                                TRUE ~ DF_BIOMASS),
-         EXP_RATE = DF_BIOMASS/BIOMASS) %>%
+  right_join(., bioabund.indpref) %>%        # to calculate exploitation rate
+  mutate(
+    DF_BIOMASS = case_when((YEAR %in% c(2020, 2022:2023)) ~ NA,
+                           TRUE ~ DF_BIOMASS),
+    EXP_RATE = DF_BIOMASS / BIOMASS
+  ) %>%
   dplyr::select(YEAR, DF_BIOMASS, EXP_RATE) %>%
   na.omit()
 
-## PREPARE OGIVE MATRIX ----
+## PREPARE OGIVE MATRIX ------------------------------------------------------
 ogive <- ogive_raw %>%
   dplyr::select(YEAR, SIZE_5MM, PROP_MATURE) %>%
   rename(p_term = PROP_MATURE)
@@ -74,10 +87,12 @@ ogive <- ogive_raw %>%
 years_vec <- sort(unique(ogive$YEAR))
 sizes_5   <- sort(unique(ogive$SIZE_5MM))
 
-ogive_mat <- matrix(NA_real_,
-                    nrow = length(years_vec),
-                    ncol = length(sizes_5),
-                    dimnames = list(years_vec, sizes_5))
+ogive_mat <- matrix(
+  NA_real_,
+  nrow = length(years_vec),
+  ncol = length(sizes_5),
+  dimnames = list(years_vec, sizes_5)
+)
 
 for (i in seq_len(nrow(ogive))) {
   y  <- ogive$YEAR[i]
@@ -85,19 +100,18 @@ for (i in seq_len(nrow(ogive))) {
   ogive_mat[as.character(y), as.character(sz)] <- ogive$p_term[i]
 }
 
-## HELPER FUNCTIONS ----
-# use the ogive range, but keep everything inside it
-sizes_5   <- sort(unique(ogive$SIZE_5MM))          # e.g., 7.5 ... 172.5
-min_size  <- ceiling(min(sizes_5))                 # 8
-max_size  <- floor(max(sizes_5))                   # 172
-size_bins <- min_size:max_size                     # 8:172
+## HELPER FUNCTIONS ----------------------------------------------------------
+# Use ogive range to define 1-mm size bins
+sizes_5   <- sort(unique(ogive$SIZE_5MM))
+min_size  <- ceiling(min(sizes_5))
+max_size  <- floor(max(sizes_5))
+size_bins <- min_size:max_size
 n_size    <- length(size_bins)
 
-
+# Extract empirical ogive for a given year, mapped to 1-mm bins
 get_p_term_year <- function(year_val, size_bins, ogive_mat) {
   ogive_years <- as.numeric(rownames(ogive_mat))
   
-  # if exact year not present, return NA vector
   if (!year_val %in% ogive_years) {
     return(rep(NA_real_, length(size_bins)))
   }
@@ -112,19 +126,18 @@ get_p_term_year <- function(year_val, size_bins, ogive_mat) {
   p_vec
 }
 
-## GROWTH AND MORTALITY ----
-a_male <- -15 # intercept from assessment growth fit
-b_male <- 0.40 # positive slope from assessment
+## GROWTH AND MORTALITY ------------------------------------------------------
+a_male <- -15
+b_male <- 0.40
 
 mean_growth <- function(size_mm) {
   pmax(0, a_male + b_male * size_mm)
 }
 
-
-M <- 0.271 # mortality from SAFE (applying HAmel's methodology)
+M <- 0.271
 surv_M <- exp(-M)
 
-## GAM-BASED P(mature at 101 mm) ----
+## GAM-BASED P(mature at 101 mm) ---------------------------------------------
 p_pref_101 <- function(cohort_abund, lg_abund_avg2, mod) {
   newdat <- data.frame(
     COHORT_ABUND  = cohort_abund,
@@ -133,8 +146,7 @@ p_pref_101 <- function(cohort_abund, lg_abund_avg2, mod) {
   predict(mod, newdata = newdat, type = "response")[1]
 }
 
-## RECRUITMENT FROM COHORT DF ----
-# cohort: YEAR, SIZE_1MM, COHORT_ABUND (long format)
+## RECRUITMENT FROM COHORT DF ------------------------------------------------
 years_cohort <- sort(unique(cohort$YEAR))
 
 draw_recruits <- function(cohort) {
@@ -145,7 +157,7 @@ draw_recruits <- function(cohort) {
   rec_vec
 }
 
-## ONE-YEAR PROJECTION FUNCTION ----
+## ONE-YEAR PROJECTION FUNCTION ----------------------------------------------
 project_one_year <- function(N_t,
                              year_val,
                              expl_rate,
@@ -157,8 +169,10 @@ project_one_year <- function(N_t,
   
   n_size <- length(size_bins)
   
+  # 1) Natural mortality on current numbers
   N_surv <- N_t * exp(-M)
   
+  # 2) Growth and re-binning
   inc <- mean_growth(size_bins)
   new_size <- size_bins + inc
   new_idx <- findInterval(new_size, vec = size_bins, all.inside = TRUE)
@@ -168,11 +182,13 @@ project_one_year <- function(N_t,
     N_grown[new_idx[i]] <- N_grown[new_idx[i]] + N_surv[i]
   }
   
+  # 3) Apply exploitation on large males (>= 101 mm)
   large_idx   <- which(size_bins >= 101)
   catch_large <- N_grown[large_idx] * expl_rate
   N_post_fish <- N_grown
   N_post_fish[large_idx] <- N_grown[large_idx] - catch_large
   
+  # 4) Get empirical ogive for this year
   p_term <- get_p_term_year(year_val, size_bins, ogive_mat)
   
   if (all(is.na(p_term))) {
@@ -192,17 +208,53 @@ project_one_year <- function(N_t,
     ))
   }
   
-  idx_101 <- which(size_bins == 101)
-  if (length(idx_101) == 1) {
-    cohort_abund_t  <- sum(N_post_fish[size_bins >= 40 & size_bins <= 60])
-    lg_abund_avg2_t <- sum(N_post_fish[size_bins >= 95])
-    p_mature_101_t  <- p_pref_101(cohort_abund_t, lg_abund_avg2_t, mod)
-    p_term[idx_101] <- p_mature_101_t
+  # 5) Compute covariates for GAM based on post-fishing numbers
+  cohort_abund_t  <- sum(N_post_fish[size_bins >= 40 & size_bins <= 60])
+  lg_abund_avg2_t <- sum(N_post_fish[size_bins >= 95])
+  
+  # GAM-predicted target fraction of terminal molts >= 101
+  target_frac <- p_pref_101(cohort_abund_t, lg_abund_avg2_t, mod)
+  
+  # 6) Compute empirical ogive-implied fraction >= 101
+  T_emp <- N_post_fish * p_term
+  idx_ge101 <- which(size_bins >= 101)
+  total_T   <- sum(T_emp)
+  emp_frac  <- if (total_T > 0) sum(T_emp[idx_ge101]) / total_T else NA
+  
+  # 7) Adjust ogive probabilities >= 101 so overall fraction matches target
+  if (!is.na(target_frac) && total_T > 0) {
+    
+    adjust_fun <- function(c) {
+      p_adj <- p_term
+      p_adj[idx_ge101] <- pmin(p_adj[idx_ge101] * c, 1)  # scale upper tail
+      
+      T_adj <- N_post_fish * p_adj
+      total_T_adj <- sum(T_adj)
+      if (total_T_adj <= 0) return(-target_frac)
+      
+      frac_adj <- sum(T_adj[idx_ge101]) / total_T_adj
+      frac_adj - target_frac
+    }
+    
+    c_star <- 1
+    val_lo <- adjust_fun(0.1)
+    val_hi <- adjust_fun(10)
+    
+    if (!is.na(val_lo) && !is.na(val_hi) && val_lo * val_hi < 0) {
+      c_star <- tryCatch(
+        uniroot(adjust_fun, lower = 0.1, upper = 10)$root,
+        error = function(e) 1
+      )
+    }
+    
+    p_term[idx_ge101] <- pmin(p_term[idx_ge101] * c_star, 1)
   }
   
+  # 8) Apply (adjusted) ogive to get terminal molts and update state
   term_molts <- N_post_fish * p_term
   N_after_tm <- N_post_fish - term_molts
   
+  # 9) Recruitment: add a new 40–60 mm cohort
   rec <- draw_recruits(cohort)
   rec_sizes <- as.numeric(names(rec))
   idx_rec   <- match(rec_sizes, size_bins)
@@ -222,7 +274,7 @@ project_one_year <- function(N_t,
   )
 }
 
-# SIMULATION FUNCTION ----
+# SIMULATION FUNCTION --------------------------------------------------------
 simulate_scenario <- function(expl_rate,
                               years_sim,
                               start_year,
@@ -235,6 +287,7 @@ simulate_scenario <- function(expl_rate,
   
   n_size <- length(size_bins)
   
+  # Initial state: draw a cohort and map into size bins
   N0 <- numeric(n_size)
   rec0 <- draw_recruits(cohort)
   rec_sizes0 <- as.numeric(names(rec0))
@@ -272,10 +325,6 @@ simulate_scenario <- function(expl_rate,
       tm_above <- sum(tm[idx_large_tm])
       prop_tm_above101[t] <- if (total_tm > 0) tm_above / total_tm else NA
     }
-    idx_large_tm <- which(size_bins >= 101)
-    total_tm <- sum(tm)
-    tm_above <- sum(tm[idx_large_tm])
-    prop_tm_above101[t] <- if (total_tm > 0) tm_above / total_tm else NA
     
     cohort_abund_ts[t]  <- res$cohort_abund_t
     lg_abund_avg2_ts[t] <- res$lg_abund_avg2_t
@@ -293,30 +342,30 @@ simulate_scenario <- function(expl_rate,
   )
 }
 
-## RUN EXAMPLE SCENARIOS ----
-years_sim  <- length(years_vec)+5
+## RUN EXAMPLE SCENARIOS -----------------------------------------------------
+years_sim  <- length(years_vec) + 5
 start_year <- min(years_vec)
-end_year <- max(years_vec)
+end_year   <- max(years_vec)
 expl_vec   <- seq(0, 1, by = 0.2)
-n_reps <- 100  # 100 independent simulations per exploitation rate
+n_reps     <- 100
 
 sim_df <- do.call(rbind, lapply(seq_along(expl_vec), function(i) {
   U <- expl_vec[i]
   
-  # run n_reps replicates for this exploitation rate
-  reps <- lapply(1:n_reps, function(r) 
-    simulate_scenario(U,
-                      years_sim,
-                      start_year,
-                      mod,
-                      size_bins,
-                      ogive_mat,
-                      cohort,
-                      M,
-                      replicate_id = r)
+  reps <- lapply(1:n_reps, function(r)
+    simulate_scenario(
+      expl_rate   = U,
+      years_sim   = years_sim,
+      start_year  = start_year,
+      mod         = mod,
+      size_bins   = size_bins,
+      ogive_mat   = ogive_mat,
+      cohort      = cohort,
+      M           = M,
+      replicate_id = r
+    )
   )
   
-  # stack replicates into a data.frame with replicate column
   do.call(rbind, lapply(reps, function(res) {
     data.frame(
       exploitation     = U,
@@ -329,28 +378,39 @@ sim_df <- do.call(rbind, lapply(seq_along(expl_vec), function(i) {
   }))
 }))
 
-sim_df %>%
-  filter(prop_tm_above101 >0) %>%
+# Summaries across replicates
+sum_df <- sim_df %>%
+  filter(prop_tm_above101 > 0) %>%
   group_by(exploitation, year) %>%
   mutate(N = n()) %>%
   ungroup() %>%
   group_by(exploitation, year) %>%
-  reframe(pind = mean(prop_tm_above101),
-          N = n(),
-          se = sd(prop_tm_above101)/sqrt(N)) %>%
-  full_join(., expand.grid(year = seq(min(.$year), max(.$year)), exploitation = expl_vec)) -> sum_df
+  reframe(
+    pind = mean(prop_tm_above101),
+    N    = n(),
+    se   = sd(prop_tm_above101) / sqrt(N)
+  ) %>%
+  full_join(
+    expand.grid(
+      year         = seq(min(.$year), max(.$year)),
+      exploitation = expl_vec
+    ),
+    by = c("year", "exploitation")
+  )
 
+# Plots ----------------------------------------------------------------------
+ggplot(sum_df %>% filter(exploitation != 1),
+       aes(year, pind, color = as.factor(exploitation))) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = pind - se, ymax = pind + se)) +
+  theme_bw()+
+  xlab("ogive year")+
+  ylab("Proportion mature >=101mm")
 
-ggplot(sum_df %>% filter(exploitation !=1), aes(year, pind, color = as.factor(exploitation)))+
-  geom_line()+
-  geom_point()+
-  geom_errorbar(sum_df%>% filter(exploitation !=1), mapping = aes(year, ymin = pind-se, ymax = pind+se, color = as.factor(exploitation)))+
-  theme_bw()
-
-
-
-ggplot(sim_df %>% filter(prop_tm_above101>0), aes(cohort_abund_101, lg_abund_avg2, fill = prop_tm_above101))+
-  geom_point(shape = 21, stroke = NA, size =2, alpha = 0.5)+
-  facet_wrap(~exploitation)+
-  scale_fill_viridis_c()+
+ggplot(sim_df %>% filter(prop_tm_above101 > 0),
+       aes(cohort_abund_101, lg_abund_avg2, fill = prop_tm_above101)) +
+  geom_point(shape = 21, stroke = NA, size = 2, alpha = 0.5) +
+  facet_wrap(~exploitation) +
+  scale_fill_viridis_c() +
   theme_bw()
