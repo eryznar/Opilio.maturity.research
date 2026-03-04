@@ -181,7 +181,7 @@ choose_ogive_year_from_N <- function(target_prop_new_ge101,
   ogive_years[which.min(diffs)]
 }
 
-## ONE-TIME-STEP PROJECTION WITH MATURE STOCK -------------------------------
+## ONE-TIME-STEP PROJECTION  -------------------------------
 project_one_step <- function(N_t,        # immature / not-yet-terminal
                              M_t,        # already mature
                              expl_rate,
@@ -198,7 +198,17 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   N_surv <- N_t * exp(-M)
   M_surv <- M_t * exp(-M)
   
-  # 2. growth (same kernel)
+  # 2. exploitation before terminal molt (>=101 mm), on survivors
+  idx_fished  <- which(size_bins >= 101)
+  catch_imm   <- N_surv[idx_fished] * expl_rate
+  catch_mat   <- M_surv[idx_fished] * expl_rate
+  
+  N_post_fish0 <- N_surv
+  M_post_fish0 <- M_surv
+  N_post_fish0[idx_fished] <- N_surv[idx_fished] - catch_imm
+  M_post_fish0[idx_fished] <- M_surv[idx_fished] - catch_mat
+  
+  # 3. growth (same kernel)
   inc      <- mean_growth(size_bins)
   new_size <- size_bins + inc
   new_idx  <- findInterval(new_size, vec = size_bins, all.inside = TRUE)
@@ -206,19 +216,13 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   N_grown <- numeric(n_size)
   M_grown <- numeric(n_size)
   for (i in seq_along(size_bins)) {
-    N_grown[new_idx[i]] <- N_grown[new_idx[i]] + N_surv[i]
-    M_grown[new_idx[i]] <- M_grown[new_idx[i]] + M_surv[i]
+    N_grown[new_idx[i]] <- N_grown[new_idx[i]] + N_post_fish0[i]
+    M_grown[new_idx[i]] <- M_grown[new_idx[i]] + M_post_fish0[i]
   }
   
-  # 3. exploitation before terminal molt (>=95 mm)
-  idx_fished  <- which(size_bins >= 95)
-  catch_imm   <- N_grown[idx_fished] * expl_rate
-  catch_mat   <- M_grown[idx_fished] * expl_rate
-  
+  # after growth, these are the post-fishing abundances by size
   N_post_fish <- N_grown
   M_post_fish <- M_grown
-  N_post_fish[idx_fished] <- N_grown[idx_fished] - catch_imm
-  M_post_fish[idx_fished] <- M_grown[idx_fished] - catch_mat
   
   # 4. state variables for GAM (total abundance)
   N_total_post <- N_post_fish + M_post_fish
@@ -244,8 +248,8 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
     if (total_mature_new <= 0) {
       prop_new_ge101_ogive <- NA_real_
     } else {
-      idx_ge101          <- which(size_bins >= 101)
-      mature_ge101_new   <- sum(N_mature_new_by_size[idx_ge101])
+      idx_ge101            <- which(size_bins >= 101)
+      mature_ge101_new     <- sum(N_mature_new_by_size[idx_ge101])
       prop_new_ge101_ogive <- mature_ge101_new / total_mature_new
     }
   } else {
@@ -288,13 +292,13 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   }
   
   list(
-    N_next                     = N_after_tm,
-    M_next                     = M_after_tm,
-    term_molts                 = term_molts,
-    catch_large_imm            = catch_imm,
-    catch_large_mat            = catch_mat,
-    cohort_abund_t             = cohort_abund_t,
-    lg_abund_avg2_t            = lg_abund_avg2_t,
+    N_next                      = N_after_tm,
+    M_next                      = M_after_tm,
+    term_molts                  = term_molts,
+    catch_large_imm             = catch_imm,
+    catch_large_mat             = catch_mat,
+    cohort_abund_t              = cohort_abund_t,
+    lg_abund_avg2_t             = lg_abund_avg2_t,
     prop_new_mature_ge101_gam   = target_prop_new_ge101,   # GAM (newly mature)
     prop_new_mature_ge101_ogive = prop_new_ge101_ogive,    # ogive (newly mature)
     prop_new_mature_ge101_sim   = prop_new_ge101_sim,      # simulated newly mature
@@ -302,6 +306,7 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
     ogive_year_star             = ogive_year_star
   )
 }
+
 
 ## SIMULATION FUNCTION (TIME-STEP BASED) ------------------------------------
 simulate_scenario <- function(expl_rate,
@@ -312,9 +317,12 @@ simulate_scenario <- function(expl_rate,
                               mean_ogive_df,
                               cohort,
                               M,
-                              replicate_id = 1) {
+                              replicate_id = 1,
+                              burn_in = 0) {
   
   n_size <- length(size_bins)
+  
+  message(paste("Replicate ", replicate_id))
   
   # initial immature from recruitment
   N0 <- numeric(n_size)
@@ -367,7 +375,7 @@ simulate_scenario <- function(expl_rate,
     M_t <- res$M_next
   }
   
-  data.frame(
+  out <- data.frame(
     replicate_id               = replicate_id,
     time_step                  = time_step,
     exploitation               = expl_rate,
@@ -383,12 +391,20 @@ simulate_scenario <- function(expl_rate,
     prop_mature_ge101_stock     = prop_ge101_stock_ts,
     ogive_year_star             = ogive_year_star_ts
   )
+  
+  # drop burn-in time steps (e.g., burn_in = 15)
+  if (burn_in > 0) {
+    out <- out[out$time_step > burn_in, ]
+  }
+  
+  out
 }
 
 ## RUN SCENARIOS -------------------------------------------------------------
-n_steps <- 40
+n_steps <- 50
 expl_vec <- seq(0, 1, by = 0.2)
-n_reps   <- 100
+n_reps   <- 1000
+burn_in <- 15
 
 sim_df <- do.call(rbind, lapply(expl_vec, function(U) {
   do.call(rbind, lapply(1:n_reps, function(r)
@@ -401,7 +417,8 @@ sim_df <- do.call(rbind, lapply(expl_vec, function(U) {
       mean_ogive_df = mean_ogive_df,
       cohort        = cohort,
       M             = M,
-      replicate_id  = r
+      replicate_id  = r,
+      burn_in = burn_in
     )
   ))
 }))
