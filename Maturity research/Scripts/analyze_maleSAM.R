@@ -358,7 +358,7 @@ model.dat3 <- model.dat2 %>%
     TOCC_avg2 = TOCC_avg2,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
-    TOCC_avg2lag1    = lag(TOCC_avg2, 1)
+    #TOCC_avg2lag1    = lag(TOCC_avg2, 1)
     #TOCC_avg2lag1  = lag(TOCC_avg2, 1),
     #TOCC_avg2lag2  = lag(TOCC_avg2, 2),
     
@@ -969,7 +969,7 @@ fits_ranked <- fits %>%
   # rank primarily by RMSE, secondarily by GCV
   dplyr::arrange(cv_rmse, GCV)
 
-fits_ranked
+fits_ranked %>% filter(sm_term == "COHORT_ABUND" & lg_term == "LG_ABUND_avg2")
 
 write.csv(fits_ranked, "./Maturity research/Output/SNOW_male_indpref_modelselection.csv")
 read.csv("./Maturity research/Output/SNOW_male_indpref_modelselection.csv")

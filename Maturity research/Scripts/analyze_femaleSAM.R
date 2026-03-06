@@ -246,7 +246,7 @@ for (vv in vars) {
   SAM_ok <- dat_ccf[[response]][ok]
   pp_ok  <- pp[ok]
   
-  # CCF on original (non pre-whitened) series: covariate first, response second
+  # CCF (covariate first, response second)
   cc <- ccf(pp_ok, SAM_ok, lag.max = max_lag, plot = FALSE)
   
   df <- data.frame(
@@ -304,7 +304,7 @@ model.dat3 <- fem.model.dat2 %>%
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
     # FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
     #FEM_MAT_ABUND_avg2    = FEM_MAT_ABUND_avg2,
-    FEM_MAT_ABUND_lag2  = lag(FEM_MAT_ABUND_avg2, 2),
+    FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2, 1),
     #FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     
     
@@ -338,7 +338,7 @@ model.dat3 <- fem.model.dat2 %>%
     
     FEM_COHORT_ABUND,
     
-    FEM_MAT_ABUND, FEM_MAT_ABUND_lag2,
+    FEM_MAT_ABUND, FEM_MAT_ABUND_avg2lag1,
     #FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, FEM_MAT_ABUND_avg2lag2,
     
     MALE_LG_ABUND, MALE_LG_ABUND_avg2,
@@ -569,7 +569,7 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 # fit model
 mod1 <- gamm(
   SAM ~ 
-    s(FEM_MAT_ABUND_lag2, k = 4),
+    s(FEM_MAT_ABUND_avg2lag1, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian(),
@@ -577,16 +577,6 @@ mod1 <- gamm(
 )
 saveRDS(mod1, "./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
 
-mod1 <- gamm(
-  SAM ~ 
-    s(FEM_MAT_ABUND_lag2, k = 4)+
-  s(MALE_LG_ABUND, k = 4)+
-  s(ICE_avg2, k=4),
-  correlation = corAR1(),
-  data        = model.dat3,
-  family      = gaussian(),
-  method = "REML"
-)
 
 diagnose.gamm(mod1)
 
@@ -992,9 +982,9 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
     ~ .smooth,
     scales = "free_x",
     nrow = 2,
-    # labeller = as_labeller(c(
-    #   "s(ICE_avg2)"    = "Ice % cover (2-year avg)",
-    #   "s(MALE_LG_ABUND_avg2lag1)"   = "Large male abundance (2-year avg, 1-year lag)"))
+    labeller = as_labeller(c(
+      "s(ICE_avg2)"    = "Ice % cover (2-year avg)",
+      "s(MALE_LG_ABUND_avg2lag1)"   = "Large male abundance (2-year avg, 1-year lag)"))
     )+ 
   theme_bw()+
   ylab("Partial effect")+

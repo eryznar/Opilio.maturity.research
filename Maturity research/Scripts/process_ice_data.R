@@ -6,6 +6,7 @@
   
 source("./Maturity research/Scripts/load_libs_params.R")
 
+# need to run these sequentially otherwise the files are too big
 ice.years <- 1980:1988
 ice.years <-1989:2000
 ice.years <- 2001:2013
@@ -79,7 +80,7 @@ ice.years <- 2014:2025
    
  }
 
-  # Scale, and compute Jan-Feb and Mar-Apr means
+  # compute Jan-Feb and Mar-Apr means (non-spatial)
   ice.means %>%
     group_by(month) %>%
     mutate(value = value,
@@ -89,7 +90,7 @@ ice.years <- 2014:2025
     group_by(year, name) %>%
     reframe(value = mean(value)) -> ice.dat
   
-  # Scale, and compute Jan-Feb and Mar-Apr means
+  # compute Jan-Feb and Mar-Apr means
   ice.spatial %>%
     group_by(month, latitude, longitude) %>%
     mutate(value = value,
@@ -103,6 +104,11 @@ ice.years <- 2014:2025
   # Save
   write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"), row.names = FALSE)
   write.csv(spatial.ice.dat, paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
+  
+  
+  
+  # Get EBS grid for masking
+  region_layers <- akgfmaps::get_base_layers("sebs")
   
   region_layers$survey.area -> pp
   ice <- read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") %>%
