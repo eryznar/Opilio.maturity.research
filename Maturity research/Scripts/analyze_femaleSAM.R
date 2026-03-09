@@ -304,7 +304,7 @@ model.dat3 <- fem.model.dat2 %>%
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
     # FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
     #FEM_MAT_ABUND_avg2    = FEM_MAT_ABUND_avg2,
-    FEM_MAT_ABUND_lag2  = lag(FEM_MAT_ABUND_avg2, 2),
+    FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2, 1),
     #FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     
     
@@ -338,7 +338,7 @@ model.dat3 <- fem.model.dat2 %>%
     
     FEM_COHORT_ABUND,
     
-    FEM_MAT_ABUND, FEM_MAT_ABUND_lag2,
+    FEM_MAT_ABUND, FEM_MAT_ABUND_avg2lag1,
     #FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, FEM_MAT_ABUND_avg2lag2,
     
     MALE_LG_ABUND, MALE_LG_ABUND_avg2,
@@ -569,24 +569,13 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 # fit model
 mod1 <- gamm(
   SAM ~ 
-    s(FEM_MAT_ABUND_lag2, k = 4),
+    s(FEM_MAT_ABUND_avg2lag1, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian(),
   method = "REML"
 )
 saveRDS(mod1, "./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
-
-mod1 <- gamm(
-  SAM ~ 
-    s(FEM_MAT_ABUND_lag2, k = 4)+
-  s(MALE_LG_ABUND, k = 4)+
-  s(ICE_avg2, k=4),
-  correlation = corAR1(),
-  data        = model.dat3,
-  family      = gaussian(),
-  method = "REML"
-)
 
 diagnose.gamm(mod1)
 
@@ -605,7 +594,7 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
     scales = "free_x",
     nrow = 1,
     labeller = as_labeller(c(
-      "s(FEM_MAT_ABUND_lag2)"    = "Mature female abundance (2-year lag)")))+ 
+      "s(FEM_MAT_ABUND_avg2lag1)"    = "Mature female abundance (2-year avg, 1-year lag)")))+ 
   xlab("Value")+
   theme(axis.text = element_text(size = 14),
         axis.title = element_text(size = 14),
@@ -966,17 +955,17 @@ mod1 <- gam(
 
 saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
 
-# Fit best model
-mod1 <- gam(
-  cbind(MATURE, IMMATURE) ~ 
-    #s(FEM_MAT_ABUND_lag2, k =4) +
-    s(MALE_LG_ABUND_avg2lag1, k =4) + 
-    s(ICE_avg2, k = 4)+
-    s(FEM_TOCC_avg2, k=4),
-  data   = model.dat3,
-  family = quasibinomial(link = "logit"),
-  method = "REML"
-)
+# # Fit best model
+# mod1 <- gam(
+#   cbind(MATURE, IMMATURE) ~ 
+#     #s(FEM_MAT_ABUND_lag2, k =4) +
+#     s(MALE_LG_ABUND_avg2lag1, k =4) + 
+#     s(ICE_avg2, k = 4)+
+#     s(FEM_TOCC_avg2, k=4),
+#   data   = model.dat3,
+#   family = quasibinomial(link = "logit"),
+#   method = "REML"
+# )
 gam.check(mod1)
 summary(mod1)
 acf(mod1$residuals)

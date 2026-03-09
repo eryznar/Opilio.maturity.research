@@ -200,6 +200,7 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 ggsave("./Maturity research/Figures/SNOW_malepmat101_diagnostics.png", width = 8, height = 7)
 
 
+
 # FEMALE SAM DIAGNOSTICS ----
 mod <- readRDS("./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
 
@@ -232,7 +233,7 @@ p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
 p_qq <- ggplot(resid_df, aes(sample = resid)) +
   stat_qq() +
   stat_qq_line(colour = "red") +
-  labs(title = "Normal Q-Q") +
+  labs(title = "Q-Q") +
   theme_bw()
 
 # Residuals vs linear predictor
@@ -253,7 +254,6 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 
 (p_acf | p_qq) /
   (p_resid_lin | p_hist) 
-
 
 ggsave("./Maturity research/Figures/SNOW_femaleSAM_diagnostics.png", width = 8, height = 7)
 
