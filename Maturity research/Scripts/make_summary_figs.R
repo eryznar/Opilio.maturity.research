@@ -1,3 +1,6 @@
+# LOAD LIBS/PARAMS ---------------------------------------------------------------------------------------
+source("./Maturity research/Scripts/load_libs_params.R")
+
 # SAM
 SAM.dat <- rbind(read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>%
                   dplyr::select(YEAR, SAM) %>%
@@ -84,242 +87,55 @@ ggplot(prop.dat, aes(YEAR, value)) +
 
 ggsave("./Maturity research/Figures/SNOW_PMAT_timeseries.png", width = 8, height = 7)        
 
+# EBS map
+region_layers <- akgfmaps::get_base_layers("sebs")
 
-# MALE SAM DIAGNOSTICS ----
-mod <- readRDS("./Maturity research/Models/SNOW_maleSAM_gamm.rda")
-
-## 1. Concurvity of smooths (GAM part)
-concurvity(mod$gam, full = TRUE)   # or 'para = TRUE' etc. as needed
-# or use gam.check(mod$gam) / qq.gam(mod$gam, rep = 100) for extra QQ bands
-
-## 2. Residual diagnostics for the GAMM (lme part)
-
-# use normalized residuals from the lme component
-resid_df <- data.frame(
-  resid   = residuals(mod$lme, type = "normalized"),
-  fitted  = fitted(mod$lme),
-  linpred = predict(mod$lme, type = "link")
-)
-
-## ACF of normalized residuals
-acf_obj <- acf(resid_df$resid, plot = FALSE)
-acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
-
-n  <- acf_obj$n.used
-ci <- qnorm((1 + 0.95)/2) / sqrt(n)   # white-noise CI, matches base acf()
-
-p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
-  geom_hline(yintercept = 0, colour = "black") +
-  geom_hline(yintercept =  ci, colour = "blue", linetype = "dashed") +
-  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
-  geom_segment(aes(xend = lag, y = 0, yend = acf)) +
-  labs(title = "ACF",
-       x = "Lag", y = "ACF") +
-  theme_bw()
-
-## QQ plot of normalized residuals
-p_qq <- ggplot(resid_df, aes(sample = resid)) +
-  stat_qq() +
-  stat_qq_line(colour = "red") +
-  labs(title = "Q-Q") +
-  theme_bw()
-
-## Residuals vs linear predictor
-p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
-  geom_point(alpha = 0.7) +
-  geom_hline(yintercept = 0, colour = "red") +
-  labs(title = "Residuals vs linear predictor",
-       x = "Linear predictor", y = "Residuals") +
-  theme_bw()
-
-## Histogram of residuals
-p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(bins = 7, colour = "black", fill = "grey80") +
-  labs(title = "Histogram of residuals",
-       x = "Residuals", y = "Count") +
-  theme_bw()
-
-(p_acf | p_qq) /
-  (p_resid_lin | p_hist)
-#+ plot_annotation(title = "Male SAM diagnostics")
-
-ggsave("./Maturity research/Figures/SNOW_maleSAM_diagnostics.png", width = 8, height = 7)
-
-# MALE PMAT 101 DIAGNOSTICS ----
-mod <- readRDS("./Maturity research/Models/SNOW_malepmat101_gam.rda")
-
-concurvity(mod)
-mod$scale # should be > 1 to justify quasibinomial
+region_layers$survey.area -> pp
+ice <- read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") %>%
+  st_as_sf(., coords = c("longitude", "latitude"), crs = crs.latlon) %>%
+  st_transform(., st_crs(pp)) %>%
+  
+  
+  ## Load map layers
+  map_layers <- readRDS("./Data/map_layers.rda")
 
 
-resid_df <- data.frame(
-  resid   = residuals(mod),                 # GAM residuals
-  fitted  = fitted(mod),                    # GAM fitted values
-  linpred = predict(mod, type = "link")     # linear predictor
-)
+## Trim survey grid to survey area
+region_layers$survey.grid %>%
+  st_transform(crs = st_crs(region_layers$survey.area)) %>%
+  st_intersection(region_layers$survey.area) -> survey.grid
 
-# compute acf without plotting
-acf_obj <- acf(resid_df$resid, plot = FALSE)
-acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
-
-# CI like base acf (white-noise assumption)
-n   <- acf_obj$n.used
-ci  <- qnorm((1 + 0.95)/2) / sqrt(n)
-
-p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
-  geom_hline(yintercept = 0, colour = "black") +
-  geom_hline(yintercept = ci,  colour = "blue", linetype = "dashed") +
-  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
-  geom_segment(aes(xend = lag, y = 0, yend = acf)) +  # vertical bars
-  labs(title = "ACF",
-       x = "Lag", y = "ACF") +
-  theme_bw()
-
-# QQ plot
-p_qq <- ggplot(resid_df, aes(sample = resid)) +
-  stat_qq() +
-  stat_qq_line(colour = "red") +
-  labs(title = "Q-Q") +
-  theme_bw()
-
-# Residuals vs linear predictor
-p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
-  geom_point(alpha = 0.7) +
-  geom_hline(yintercept = 0, colour = "red") +
-  labs(title = "Residuals vs linear predictor",
-       x = "Linear predictor", y = "Residuals") +
-  theme_bw()
-
-# Histogram of residuals
-p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(breaks = seq(-10, 10, by = 4), colour = "black", fill = "grey80") +
-  labs(title = "Histogram of residuals",
-       x = "Residuals", y = "Count") +
-  theme_bw()
+## Specify plot boundary, transform to map crs
+data.frame(x = c(-178.5, -150), 
+           y = c(54.5, 67)) %>%
+  sf::st_as_sf(coords = c(x = "x", y = "y"), crs = sf::st_crs(4326)) %>%
+  sf::st_transform(., crs = region_layers$crs) %>%
+  cbind(st_coordinates(.)) %>%
+  as.data.frame() -> plot.boundary
 
 
-(p_acf | p_qq) /
-  (p_resid_lin | p_hist) 
-#+ plot_annotation(title = "Male SAM diagnostics")
+## Plot 
+ggplot() +
+  geom_sf(data = region_layers$bathymetry, color=alpha("grey70")) +
+  # geom_sf(data = region_layers$survey.grid, fill=NA, color=alpha("grey70"), linewidth = 1)+
+  geom_sf(data = region_layers$survey.area, fill = alpha("cadetblue", alpha=0.3), size = 0) +
+  geom_sf(data = region_layers$akland, fill = "grey80", size=0.1) +
+  geom_sf(data = region_layers$survey.area, fill = NA) +
+  #scale_x_continuous(breaks = c(-180, -175, -170, -165, -160, -155, -150), labels = paste0(c(180, 175, 170, 165, 160, 155, 150), "°W")) + 
+  #scale_y_continuous(breaks = c(52, 54, 56, 58, 60, 62, 64, 66, 68, 70), labels = paste0(c(52, 54, 56, 58, 60, 62, 64, 66, 68, 70), "°N")) +
+  coord_sf(xlim = plot.boundary$X,
+           ylim = plot.boundary$Y)+
+  theme_bw()+
+  theme(panel.border = element_rect(color = "black", fill = NA),
+        panel.background = element_rect(fill = NA, color = "black"),
+        legend.key = element_rect(fill = NA, color = "grey70"),
+        legend.key.size = unit(0.65,'cm'),
+        legend.background = element_blank(),
+        axis.title = element_blank(),
+        axis.text = element_text(size = 10),
+        legend.text = element_text(size = 10), 
+        legend.title = element_text(size = 10),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.grid.major = element_blank()) -> study_site
 
-ggsave("./Maturity research/Figures/SNOW_malepmat101_diagnostics.png", width = 8, height = 7)
-
-
-# FEMALE SAM DIAGNOSTICS ----
-mod <- readRDS("./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
-
-## 1. Concurvity of smooths (GAM part)
-concurvity(mod$gam, full = TRUE)   # or 'para = TRUE' etc. as needed
-# or use gam.check(mod$gam) / qq.gam(mod$gam, rep = 100) for extra QQ bands
-
-## 2. Residual diagnostics for the GAMM (lme part)
-
-# use normalized residuals from the lme component
-resid_df <- data.frame(
-  resid   = residuals(mod$lme, type = "normalized"),
-  fitted  = fitted(mod$lme),
-  linpred = predict(mod$lme, type = "link")
-)
-
-## ACF of normalized residuals
-acf_obj <- acf(resid_df$resid, plot = FALSE)
-acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
-
-n  <- acf_obj$n.used
-ci <- qnorm((1 + 0.95)/2) / sqrt(n)   # white-noise CI, matches base acf()
-
-p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
-  geom_hline(yintercept = 0, colour = "black") +
-  geom_hline(yintercept =  ci, colour = "blue", linetype = "dashed") +
-  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
-  geom_segment(aes(xend = lag, y = 0, yend = acf)) +
-  labs(title = "ACF",
-       x = "Lag", y = "ACF") +
-  theme_bw()
-
-## QQ plot of normalized residuals
-p_qq <- ggplot(resid_df, aes(sample = resid)) +
-  stat_qq() +
-  stat_qq_line(colour = "red") +
-  labs(title = "Q-Q") +
-  theme_bw()
-
-## Residuals vs linear predictor
-p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
-  geom_point(alpha = 0.7) +
-  geom_hline(yintercept = 0, colour = "red") +
-  labs(title = "Residuals vs linear predictor",
-       x = "Linear predictor", y = "Residuals") +
-  theme_bw()
-
-## Histogram of residuals
-p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(bins = 6, colour = "black", fill = "grey80") +
-  labs(title = "Histogram of residuals",
-       x = "Residuals", y = "Count") +
-  theme_bw()
-
-(p_acf | p_qq) /
-  (p_resid_lin | p_hist)
-
-ggsave("./Maturity research/Figures/SNOW_femaleSAM_diagnostics.png", width = 8, height = 7)
-
-
-# FEMALE PMAT 5565 DIAGNOSTICS ----
-mod <- readRDS("./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
-
-concurvity(mod)
-mod$scale # should be > 1 to justify quasibinomial
-
-
-resid_df <- data.frame(
-  resid   = residuals(mod),                 # GAM residuals
-  fitted  = fitted(mod),                    # GAM fitted values
-  linpred = predict(mod, type = "link")     # linear predictor
-)
-
-# compute acf without plotting
-acf_obj <- acf(resid_df$resid, plot = FALSE)
-acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
-
-# CI like base acf (white-noise assumption)
-n   <- acf_obj$n.used
-ci  <- qnorm((1 + 0.95)/2) / sqrt(n)
-
-p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
-  geom_hline(yintercept = 0, colour = "black") +
-  geom_hline(yintercept = ci,  colour = "blue", linetype = "dashed") +
-  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
-  geom_segment(aes(xend = lag, y = 0, yend = acf)) +  # vertical bars
-  labs(title = "ACF",
-       x = "Lag", y = "ACF") +
-  theme_bw()
-
-# QQ plot
-p_qq <- ggplot(resid_df, aes(sample = resid)) +
-  stat_qq() +
-  stat_qq_line(colour = "red") +
-  labs(title = "Normal Q-Q") +
-  theme_bw()
-
-# Residuals vs linear predictor
-p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
-  geom_point(alpha = 0.7) +
-  geom_hline(yintercept = 0, colour = "red") +
-  labs(title = "Residuals vs linear predictor",
-       x = "Linear predictor", y = "Residuals") +
-  theme_bw()
-
-# Histogram of residuals
-p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(bins = 7, colour = "black", fill = "grey80") +
-  labs(title = "Histogram of residuals",
-       x = "Residuals", y = "Count") +
-  theme_bw()
-
-
-(p_acf | p_qq) /
-  (p_resid_lin | p_hist) 
-
-ggsave("./Maturity research/Figures/SNOW_femalepmat5565_diagnostics.png", width = 8, height = 7)
-
+ 
