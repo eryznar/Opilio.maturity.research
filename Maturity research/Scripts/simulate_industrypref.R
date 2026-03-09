@@ -198,17 +198,7 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   N_surv <- N_t * exp(-M)
   M_surv <- M_t * exp(-M)
   
-  # 2. exploitation before terminal molt (>=101 mm), on survivors
-  idx_fished  <- which(size_bins >= 101)
-  catch_imm   <- N_surv[idx_fished] * expl_rate
-  catch_mat   <- M_surv[idx_fished] * expl_rate
-  
-  N_post_fish0 <- N_surv
-  M_post_fish0 <- M_surv
-  N_post_fish0[idx_fished] <- N_surv[idx_fished] - catch_imm
-  M_post_fish0[idx_fished] <- M_surv[idx_fished] - catch_mat
-  
-  # 3. growth (same kernel)
+  # 2. growth (same kernel)
   inc      <- mean_growth(size_bins)
   new_size <- size_bins + inc
   new_idx  <- findInterval(new_size, vec = size_bins, all.inside = TRUE)
@@ -216,34 +206,34 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   N_grown <- numeric(n_size)
   M_grown <- numeric(n_size)
   for (i in seq_along(size_bins)) {
-    N_grown[new_idx[i]] <- N_grown[new_idx[i]] + N_post_fish0[i]
-    M_grown[new_idx[i]] <- M_grown[new_idx[i]] + M_post_fish0[i]
+    N_grown[new_idx[i]] <- N_grown[new_idx[i]] + N_surv[i]
+    M_grown[new_idx[i]] <- M_grown[new_idx[i]] + M_surv[i]
   }
   
-  # after growth, these are the post-fishing abundances by size
-  N_post_fish <- N_grown
-  M_post_fish <- M_grown
+  # After growth, these are the pre-fish abundances by size
+  N_pre_fish <- N_grown
+  M_pre_fish <- M_grown
   
-  # 4. state variables for GAM (total abundance)
-  N_total_post <- N_post_fish + M_post_fish
-  cohort_abund_t  <- sum(N_total_post[size_bins >= 40 & size_bins <= 60])
-  lg_abund_avg2_t <- sum(N_total_post[size_bins >= 95])
+  # 3. state variables for GAM (total abundance, pre-fish)
+  N_total_pre <- N_pre_fish + M_pre_fish
+  cohort_abund_t  <- sum(N_total_pre[size_bins >= 40 & size_bins <= 60])
+  lg_abund_avg2_t <- sum(N_total_pre[size_bins >= 95])
   
-  # 5. GAM target = newly mature >=101 proportion
+  # 4. GAM target = newly mature >=101 proportion
   target_prop_new_ge101 <- p_pref_new_ge101(cohort_abund_t, lg_abund_avg2_t, mod)
   
-  # 6. choose ogive year (newly mature scale)
+  # 5. choose ogive year (newly mature scale)
   ogive_year_star <- choose_ogive_year_from_N(
     target_prop_new_ge101,
-    N_vec     = N_total_post,
+    N_vec     = N_total_pre,
     size_bins = size_bins,
     ogive_mat = ogive_mat
   )
   
-  # 7. get p_term and ogive-implied newly mature proportion
+  # 6. get p_term and ogive-implied newly mature proportion
   if (is.na(ogive_year_star)) {
     p_term <- get_p_term_mean(size_bins, mean_ogive_df)
-    N_mature_new_by_size <- N_total_post * p_term
+    N_mature_new_by_size <- N_total_pre * p_term
     total_mature_new     <- sum(N_mature_new_by_size)
     if (total_mature_new <= 0) {
       prop_new_ge101_ogive <- NA_real_
@@ -255,16 +245,16 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   } else {
     p_term <- get_p_term_year(ogive_year_star, size_bins, ogive_mat)
     prop_new_ge101_ogive <- implied_new_mature_ge101(
-      ogive_year_star, N_total_post, size_bins, ogive_mat
+      ogive_year_star, N_total_pre, size_bins, ogive_mat
     )
   }
   
-  # 8. apply terminal molt: move from N_post_fish to M_post_fish
-  term_molts <- N_post_fish * p_term
-  N_after_tm <- N_post_fish - term_molts
-  M_after_tm <- M_post_fish + term_molts
+  # 7. apply terminal molt: move from N_pre_fish to M_pre_fish
+  term_molts <- N_pre_fish * p_term          # newly mature this year, by size
+  N_after_tm <- N_pre_fish - term_molts
+  M_after_tm <- M_pre_fish + term_molts      # includes newly mature
   
-  # 8b. newly mature >=101 proportion from the simulated term_molts
+  # 7b. newly mature >=101 proportion from the simulated term_molts
   total_new_mature_step <- sum(term_molts)
   if (total_new_mature_step > 0) {
     idx_ge101_step        <- which(size_bins >= 101)
@@ -273,6 +263,19 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   } else {
     prop_new_ge101_sim <- NA_real_
   }
+  
+  # 8. exploitation on newly mature >=101 mm only
+  idx_fished  <- which(size_bins >= 101)
+  catch_new   <- term_molts[idx_fished] * expl_rate
+  
+  # remove catch from the newly matured component (and from M_after_tm)
+  term_molts_post <- term_molts
+  term_molts_post[idx_fished] <- term_molts[idx_fished] - catch_new
+  
+  M_after_tm[idx_fished] <- M_after_tm[idx_fished] - catch_new
+  
+  # (optionally keep these catches for output)
+  catch_large_new <- catch_new
   
   # 9. add recruits into immature state
   rec       <- draw_recruits(cohort)
@@ -294,21 +297,21 @@ project_one_step <- function(N_t,        # immature / not-yet-terminal
   list(
     N_next                      = N_after_tm,
     M_next                      = M_after_tm,
-    term_molts                  = term_molts,
-    catch_large_imm             = catch_imm,
-    catch_large_mat             = catch_mat,
+    term_molts                  = term_molts,         # pre-fishing newly mature
+    catch_new_mature_ge101      = catch_large_new,    # catch of new ≥101
     cohort_abund_t              = cohort_abund_t,
     lg_abund_avg2_t             = lg_abund_avg2_t,
-    prop_new_mature_ge101_gam   = target_prop_new_ge101,   # GAM (newly mature)
-    prop_new_mature_ge101_ogive = prop_new_ge101_ogive,    # ogive (newly mature)
-    prop_new_mature_ge101_sim   = prop_new_ge101_sim,      # simulated newly mature
-    prop_mature_ge101_stock     = prop_ge101_stock,        # stock-level
+    prop_new_mature_ge101_gam   = target_prop_new_ge101,
+    prop_new_mature_ge101_ogive = prop_new_ge101_ogive,
+    prop_new_mature_ge101_sim   = prop_new_ge101_sim,
+    prop_mature_ge101_stock     = prop_ge101_stock,
     ogive_year_star             = ogive_year_star
   )
 }
 
 
 ## SIMULATION FUNCTION (TIME-STEP BASED) ------------------------------------
+## Now takes N0 and M0 as arguments so they can be shared across exploitation
 simulate_scenario <- function(expl_rate,
                               n_steps,
                               mod,
@@ -318,22 +321,15 @@ simulate_scenario <- function(expl_rate,
                               cohort,
                               M,
                               replicate_id = 1,
-                              burn_in = 0) {
+                              burn_in = 0,
+                              N0,
+                              M0 = NULL) {
   
   n_size <- length(size_bins)
   
-  message(paste("Replicate ", replicate_id))
+  if (is.null(M0)) M0 <- numeric(n_size)  # initial mature stock = 0 by default
   
-  # initial immature from recruitment
-  N0 <- numeric(n_size)
-  rec0 <- draw_recruits(cohort)
-  rec_sizes0 <- as.numeric(names(rec0))
-  idx0 <- match(rec_sizes0, size_bins)
-  keep0 <- !is.na(idx0)
-  N0[idx0[keep0]] <- rec0[keep0]
-  
-  # initial mature stock = 0
-  M0 <- numeric(n_size)
+  message(paste("Replicate", replicate_id, "- U =", expl_rate))
   
   N_t <- N0
   M_t <- M0
@@ -403,11 +399,30 @@ simulate_scenario <- function(expl_rate,
 ## RUN SCENARIOS -------------------------------------------------------------
 n_steps <- 50
 expl_vec <- seq(0, 1, by = 0.2)
-n_reps   <- 1000
-burn_in <- 15
+n_reps   <- 5
+burn_in  <- 5
 
-sim_df <- do.call(rbind, lapply(expl_vec, function(U) {
-  do.call(rbind, lapply(1:n_reps, function(r)
+## For each replicate: draw a replicate-specific N0 once,
+## then reuse that N0 across all exploitation levels
+sim_list <- vector("list", n_reps)
+
+for (r in 1:n_reps) {
+  
+  n_size <- length(size_bins)
+  
+  # initial immature from recruitment (replicate-specific)
+  N0_r <- numeric(n_size)
+  rec0 <- draw_recruits(cohort)
+  rec_sizes0 <- as.numeric(names(rec0))
+  idx0 <- match(rec_sizes0, size_bins)
+  keep0 <- !is.na(idx0)
+  N0_r[idx0[keep0]] <- rec0[keep0]
+  
+  # initial mature stock for this replicate (can keep at 0)
+  M0_r <- numeric(n_size)
+  
+  # run all exploitation scenarios with this N0_r, M0_r
+  sim_list[[r]] <- do.call(rbind, lapply(expl_vec, function(U)
     simulate_scenario(
       expl_rate     = U,
       n_steps       = n_steps,
@@ -418,62 +433,69 @@ sim_df <- do.call(rbind, lapply(expl_vec, function(U) {
       cohort        = cohort,
       M             = M,
       replicate_id  = r,
-      burn_in = burn_in
+      burn_in       = burn_in,
+      N0            = N0_r,
+      M0            = M0_r
     )
   ))
-}))
+}
 
-## SUMMARY FOR TIME-SERIES PLOT ---------------------------------------------
+sim_df <- do.call(rbind, sim_list)
+
+## CUMULATIVE PROPORTION MATURE ≥101 ----------------------------------------
 sum_df <- sim_df %>%
   dplyr::filter(!is.na(prop_tm_above101)) %>%
   dplyr::group_by(exploitation, time_step) %>%
-  dplyr::mutate(N = dplyr::n()) %>%
-  dplyr::ungroup() %>%
-  dplyr::group_by(exploitation, time_step) %>%
-  dplyr::reframe(
-    pind = mean(prop_tm_above101),
-    N    = dplyr::n(),
-    se   = stats::sd(prop_tm_above101)/sqrt(N),
-    .groups = "drop"
-  ) %>%
-  filter(time_step >=5)
+  dplyr::summarise(
+    pind_med = stats::median(prop_tm_above101),
+    pind_lo  = stats::quantile(prop_tm_above101, 0.025, na.rm = TRUE),
+    pind_hi  = stats::quantile(prop_tm_above101, 0.975, na.rm = TRUE),
+    N        = dplyr::n(),
+    .groups  = "drop"
+  )
 
 ggplot(sum_df %>% dplyr::filter(exploitation != 1),
-       aes(time_step, pind, color = as.factor(exploitation))) +
+       aes(time_step, pind_med, color = as.factor(exploitation))) +
+  geom_ribbon(aes(ymin = pind_lo, ymax = pind_hi,
+                  fill = as.factor(exploitation)),
+              alpha = 0.2, color = NA) +
   geom_line() +
-  #facet_wrap(~exploitation, scales = "free_y")+
   geom_point() +
-  ggtitle("Cumulative proportion mature ≥101mm")+
-  geom_errorbar(aes(ymin = pind - se, ymax = pind + se)) +
+  #facet_wrap(~exploitation) +
+  ggtitle("Cumulative proportion mature ≥101mm") +
   theme_bw() +
   labs(x = "Time step (year)",
-       y = "Proportion mature ≥101",
-       color = "Exploitation")
+       y = "Proportion mature stock ≥101",
+       color = "Exploitation",
+       fill  = "Exploitation")
 
 
-# Newly matured
+## NEWLY MATURE ≥101 --------------------------------------------------------
 new_sum_df <- sim_df %>%
   dplyr::filter(!is.na(prop_new_mature_ge101_sim)) %>%
   dplyr::group_by(exploitation, time_step) %>%
   dplyr::summarise(
-    pind = mean(prop_new_mature_ge101_sim),
-    N    = dplyr::n(),
-    se   = stats::sd(prop_new_mature_ge101_sim)/sqrt(N),
-    .groups = "drop"
-  ) %>%
-  filter(time_step >=5)
+    pind_med = stats::median(prop_new_mature_ge101_sim),
+    pind_lo  = stats::quantile(prop_new_mature_ge101_sim, 0.025, na.rm = TRUE),
+    pind_hi  = stats::quantile(prop_new_mature_ge101_sim, 0.975, na.rm = TRUE),
+    N        = dplyr::n(),
+    .groups  = "drop"
+  )
 
 ggplot(new_sum_df %>% dplyr::filter(exploitation != 1),
-       aes(time_step, pind, color = as.factor(exploitation))) +
+       aes(time_step, pind_med, color = as.factor(exploitation))) +
+  geom_ribbon(aes(ymin = pind_lo, ymax = pind_hi,
+                  fill = as.factor(exploitation)),
+              alpha = 0.1, color = NA) +
   geom_line() +
-  #facet_wrap(~exploitation, scales = "free") +
   geom_point() +
-  geom_errorbar(aes(ymin = pind - se, ymax = pind + se)) +
+  #facet_wrap(~exploitation) +
+  ggtitle("Newly mature entering ≥101mm") +
   theme_bw() +
-  ggtitle("Newly mature entering ≥101mm")+
   labs(x = "Time step (year)",
        y = "Proportion newly mature ≥101",
-       color = "Exploitation")
+       color = "Exploitation",
+       fill  = "Exploitation")
 
 ## STATE SPACE PLOT ----------------------------------------------------------
 ggplot(sim_df %>% dplyr::filter(!is.na(prop_tm_above101), exploitation !=1),

@@ -119,4 +119,5 @@ ice.years <- 2014:2025
   
   write.csv(ebs.ice, paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
   
+  read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") -> pp
   
