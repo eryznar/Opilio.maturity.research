@@ -6,7 +6,6 @@
   
 source("./Maturity research/Scripts/load_libs_params.R")
 
-# need to run these sequentially otherwise the files are too big
 ice.years <- 1980:1988
 ice.years <-1989:2000
 ice.years <- 2001:2013
@@ -95,6 +94,38 @@ ice.years <- 2014:2025
   }
   
   # compute Jan-Feb and Mar-Apr means (non-spatial) WITH uncertainty
+
+ ice.means <- data.frame()
+ ice.spatial <- data.frame()
+ for(ii in 1:length(ice.files)){
+   # Process ice data using tidync()
+   tidync(paste0("./Maturity research/Data/", ice.files[ii])) %>%
+     hyper_filter(longitude = longitude >= -182 & longitude <= -154,
+                  latitude = latitude >= 50 & latitude <= 64) %>%
+     activate("siconc") %>%
+     hyper_tibble() %>%
+     mutate(year = lubridate::year(valid_time),
+            month = lubridate::month(valid_time),
+            latitude = as.numeric(as.character(latitude)),
+            longitude = as.numeric(as.character(longitude))) %>%
+     filter(month %in% c(1:4)) -> ice
+   
+   ice %>%
+     group_by(year, month)  %>%
+     reframe(value= mean(siconc)) -> mean.ice
+   
+   ice %>%
+     group_by(year, month, latitude, longitude)  %>%
+     reframe(value= mean(siconc)) -> spatial.ice
+   
+   
+   
+   ice.means <- rbind(ice.means, mean.ice)
+   ice.spatial <- rbind(ice.spatial, spatial.ice)
+   
+ }
+
+  # Scale, and compute Jan-Feb and Mar-Apr means
   ice.means %>%
     group_by(month) %>%
     mutate(
@@ -115,6 +146,7 @@ ice.years <- 2014:2025
     ) -> ice.dat
   
   # compute Jan-Feb and Mar-Apr spatial means WITH uncertainty
+  # Scale, and compute Jan-Feb and Mar-Apr means
   ice.spatial %>%
     group_by(month, latitude, longitude) %>%
     mutate(
@@ -146,6 +178,7 @@ ice.years <- 2014:2025
   
   # Get EBS grid for masking
   region_layers <- akgfmaps::get_base_layers("sebs")
+
   region_layers$survey.area -> pp
   
   ice <- read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") %>%
@@ -166,7 +199,7 @@ ice.years <- 2014:2025
       lcl_value  = value - 1.96 * se_value,
       ucl_value  = value + 1.96 * se_value
     )
-  
+
   write.csv(ebs.ice,
             paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv"),
             row.names = FALSE)
