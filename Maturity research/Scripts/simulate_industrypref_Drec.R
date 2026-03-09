@@ -500,21 +500,41 @@ ggplot(sum_long %>% dplyr::filter(exploitation != 1),
        color = "Exploitation",
        fill  = "Exploitation") +
   theme(legend.position  = "bottom",
-        legend.direction = "horizontal")
+        legend.direction = "horizontal",
+        axis.text = element_text(size =12),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size =12),
+        legend.title = element_text(size = 12),
+        strip.text = element_text(size =12))
+
+ggsave("./Maturity research/Figures/indprefsimulation_ts.png", width = 7, height = 6)
+
+
+sum_long %>%
+  group_by(type, exploitation) %>%
+  filter(pind_mean == max(pind_mean))
+
 
 ## STATE SPACE PLOTS ---------------------------------------------------------
 ggplot(sim_df %>% dplyr::filter(!is.na(prop_tm_above101), exploitation !=1),
        aes(cohort_abund_101, lg_abund_avg2, fill = prop_tm_above101)) +
   geom_point(shape = 21, stroke = NA, size = 2, alpha = 0.5) +
   facet_wrap(~exploitation) +
-  scale_fill_viridis_c() +
+  scale_fill_viridis_c(name = "Proportion") +
   theme_bw() +
   ggtitle("Cumulative proportion mature ≥101mm")+
-  labs(x = "40–60 mm cohort abundance",
-       y = "≥95 mm abundance",
+  labs(x = "Male cohort abundance (40-60mm)",
+       y = "Large male abundance (2-year avg; ≥95mm)",
        fill = "Prop mature ≥101mm")+
   theme(legend.position = "bottom",
-        legend.direction = "horizontal")
+        legend.direction = "horizontal",
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        strip.text = element_text(size =12)) 
+
+ggsave("./Maturity research/Figures/cumul_prop_statespace.png", width = 7, height = 5)
 
 ggplot(sim_df %>%
          dplyr::filter(!is.na(prop_new_mature_ge101_sim),
@@ -523,14 +543,22 @@ ggplot(sim_df %>%
            fill = prop_new_mature_ge101_sim)) +
   geom_point(shape = 21, stroke = NA, size = 2, alpha = 0.5) +
   facet_wrap(~exploitation) +
-  scale_fill_viridis_c() +
+  scale_fill_viridis_c(name = "Proportion") +
   ggtitle("Newly mature entering ≥101mm")+
   theme_bw() +
-  labs(x = "40–60 mm cohort abundance",
-       y = "≥95 mm abundance",
-       fill = "Prop newly mature ≥101")+
+  labs(x = "Male cohort abundance (40-60mm)",
+       y = "Large male abundance (2-year avg; ≥95mm)",
+       fill = "Prop newly mature ≥101mm")+
   theme(legend.position = "bottom",
-        legend.direction = "horizontal")
+        legend.direction = "horizontal",
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        strip.text = element_text(size =12)) 
+
+ggsave("./Maturity research/Figures/new_prop_statespace.png", width = 7, height = 5)
+
 
 ## GAM vs OGIVE (NEWLY MATURE SCALE) ----------------------------------------
 gam_ogive_df <- sim_df %>%
@@ -550,5 +578,15 @@ ggplot(gam_ogive_df %>% dplyr::filter(exploitation < 1),
   geom_smooth(se = FALSE, method = "lm") +
   theme_bw() +
   facet_wrap(~exploitation, scales = "free")+
-  labs(x = "GAM predicted proportion newly mature ≥101",
-       y = "Ogive-implied proportion newly mature ≥101")
+  labs(x = "GAM predicted proportion mature ≥101mm",
+       y = "Ogive-implied proportion mature ≥101mm")+
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal",
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        strip.text = element_text(size =12)) 
+
+ggsave("./Maturity research/Figures/gamVogive.png", width = 7, height = 5)
+
