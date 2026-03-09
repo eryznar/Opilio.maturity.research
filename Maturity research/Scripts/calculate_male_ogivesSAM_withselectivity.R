@@ -14,7 +14,7 @@ s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
 
 # filter specimen data by year and transform to sdmTMB coordinates
 readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
-  filter(SHELL_CONDITION == 2, SEX == 1) %>%
+  filter(SHELL_CONDITION == 2, SEX == 1, !c(YEAR == 2025 & SIZE == 175.9)) %>%
   mutate(BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5, closed = "left", dig.lab = 4),
          BIN2 = BIN_5MM) %>%
   separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
@@ -98,4 +98,4 @@ ggplot(SAM, aes(YEAR, SAM))+
   geom_line()+
   geom_point()
 
-write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM.csv")
+write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM2.csv")
