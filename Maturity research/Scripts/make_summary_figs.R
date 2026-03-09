@@ -21,7 +21,7 @@ ann_df <- data.frame(
   sex  = c("Male", "Female"),
   x    = c(2000, 2000),   # choose positions you like
   y    = c(75, 40),
-  lab  = c("p'=0.02*", "p'=0.88")
+  lab  = c("p=0.02*", "p=0.88")
 )
 
 ggplot(SAM.dat, aes(YEAR, SAM)) +
@@ -29,7 +29,7 @@ ggplot(SAM.dat, aes(YEAR, SAM)) +
   geom_point() +
   ylab("Size-at-50% maturity (mm)")+
   xlab("Year")+
-  geom_smooth(method = "lm") +
+  geom_smooth(method = "lm", fill = "cadetblue", color = "cadetblue", alpha = 0.2) +
   facet_wrap(~ factor(sex, levels = c("Male", "Female")),
              scales = "free_y", nrow = 2) +
   geom_text(data = ann_df,
@@ -66,7 +66,7 @@ ann_df <- data.frame(
   type   = c("Male proportion mature ≥101mm", "Female proportion mature 55-65mm"),
   x    = c(2015, 2015),  
   y    = c(0.3, 0.5),
-  lab  = c("p'=0.04*", "p'=0.02*")
+  lab  = c("p=0.04*", "p=0.02*")
 )
 
 ggplot(prop.dat, aes(YEAR, value)) +
@@ -74,7 +74,7 @@ ggplot(prop.dat, aes(YEAR, value)) +
   geom_point() +
   ylab("Proportion mature")+
   xlab("Year")+
-  geom_smooth(method = "lm") +
+  geom_smooth(method = "lm", fill = "cadetblue", color = "cadetblue", alpha = 0.2) +
   facet_wrap(~ factor(type, levels = c("Male proportion mature ≥101mm", "Female proportion mature 55-65mm")),
              scales = "free_y", nrow = 2) +
   geom_text(data = ann_df,
@@ -121,7 +121,7 @@ p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
 p_qq <- ggplot(resid_df, aes(sample = resid)) +
   stat_qq() +
   stat_qq_line(colour = "red") +
-  labs(title = "Normal Q-Q") +
+  labs(title = "Q-Q") +
   theme_bw()
 
 # Residuals vs linear predictor
@@ -174,7 +174,7 @@ p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
 p_qq <- ggplot(resid_df, aes(sample = resid)) +
   stat_qq() +
   stat_qq_line(colour = "red") +
-  labs(title = "Normal Q-Q") +
+  labs(title = "Q-Q") +
   theme_bw()
 
 # Residuals vs linear predictor
