@@ -358,4 +358,92 @@ ggplot() +
         plot.background = element_rect(fill = "white", color = NA),
         panel.grid.major = element_blank()) -> study_site
 
+
+# Exploitation rate ----
+
+# Specimen selectivity data
+sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
+  dplyr::rename(SEL = selectivity, SIZE_5MM = size) %>%
+  dplyr::filter(year != "GAM predictions")
+
+s.gam <- mgcv::gam(SEL ~ s(SIZE_5MM),
+                   data   = sel,
+                   family = Gamma(link = "log"))
+
+# Survey specimen data
+spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
+
+spec.dat.sel <- spec.dat
+spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
+  dplyr::mutate(
+    BIN_5MM = ggplot2::cut_width(SIZE_1MM,
+                                 width  = 5,
+                                 center = 2.5,
+                                 closed = "left",
+                                 dig.lab = 4),
+    BIN2 = BIN_5MM
+  ) %>%
+  tidyr::separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
+  dplyr::mutate(
+    LOWER    = as.numeric(sub('.', '', LOWER)),
+    UPPER    = as.numeric(gsub('.$', '', UPPER)),
+    SIZE_5MM = (UPPER + LOWER)/2
+  ) %>%
+  dplyr::mutate(
+    SEL             = predict(s.gam, newdata = ., type = "response"),
+    SAMPLING_FACTOR = SAMPLING_FACTOR / SEL
+  )
+
+# Survey biomass, already selectivity-adjusted (>= 101 mm males)
+bioabund.indpref <- crabpack::calc_bioabund(
+  crab_data = spec.dat.sel,
+  species   = "SNOW",
+  size_min  = 101,
+  size_max  = NULL,
+  sex       = "male"
+) %>%
+  mutate(
+    ABUNDANCE = ABUNDANCE / 1e6,
+    BIOMASS   = BIOMASS_MT / 1000        # kt
+  ) %>%
+  dplyr::select(YEAR, ABUNDANCE, BIOMASS)
+
+# Directed fishery retained + discard biomass (kt)
+df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") %>%
+  mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
+  dplyr::select(Year, directedfish_biomass) %>%
+  rename(YEAR = Year, DF_BIOMASS = directedfish_biomass)
+
+# Natural mortality and months between survey and fishery
+M <- 0.27
+months_between <- 6 # Mid-survey (July) to peak fishing (January) = 6
+
+df.exp <- df.dat %>%
+  right_join(bioabund.indpref, by = "YEAR") %>%
+  mutate(
+    DF_BIOMASS = case_when(
+      YEAR %in% c(2022:2023) ~ 0,
+      TRUE ~ DF_BIOMASS
+    ),
+    frac_year  = months_between / 12,
+    BIOMASS_fishery = BIOMASS * exp(-M * frac_year),
+    EXP_RATE   = DF_BIOMASS / BIOMASS_fishery #(survey biomass available to the fishery)
+  ) %>%
+  dplyr::select(YEAR, DF_BIOMASS, EXP_RATE) %>%
+  na.omit() %>%
+  full_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1)))%>%
+  filter(YEAR >=1989)
  
+
+ggplot(df.exp, aes(YEAR, EXP_RATE))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  ylab("Exploitation rate")+
+  xlab("Year")+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14)) 
+
+ggsave("./Maturity research/Figures/exploitation_rate_timeseries.png", width = 8, height = 6)        
+
