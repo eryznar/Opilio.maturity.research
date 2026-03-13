@@ -338,7 +338,7 @@ data.frame(x = c(-178.5, -150),
 ggplot() +
   geom_sf(data = region_layers$bathymetry, color=alpha("grey70")) +
   # geom_sf(data = region_layers$survey.grid, fill=NA, color=alpha("grey70"), linewidth = 1)+
-  geom_sf(data = region_layers$survey.area, fill = alpha("cadetblue", alpha=0.3), size = 0) +
+  geom_sf(data = region_layers$survey.area, fill = alpha("goldenrod", alpha=0.3), size = 0) +
   geom_sf(data = region_layers$akland, fill = "grey80", size=0.1) +
   geom_sf(data = region_layers$survey.area, fill = NA) +
   #scale_x_continuous(breaks = c(-180, -175, -170, -165, -160, -155, -150), labels = paste0(c(180, 175, 170, 165, 160, 155, 150), "°W")) + 
@@ -352,7 +352,7 @@ ggplot() +
         legend.key.size = unit(0.65,'cm'),
         legend.background = element_blank(),
         axis.title = element_blank(),
-        axis.text = element_text(size = 10),
+        axis.text = element_text(size = 12),
         legend.text = element_text(size = 10), 
         legend.title = element_text(size = 10),
         plot.background = element_rect(fill = "white", color = NA),
@@ -401,6 +401,7 @@ bioabund.indpref <- crabpack::calc_bioabund(
   size_min  = 101,
   size_max  = NULL,
   sex       = "male"
+  #shell_condition = "new_hardshell"
 ) %>%
   mutate(
     ABUNDANCE = ABUNDANCE / 1e6,
@@ -441,9 +442,78 @@ ggplot(df.exp, aes(YEAR, EXP_RATE))+
   theme_bw()+
   ylab("Exploitation rate")+
   xlab("Year")+
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14)) 
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        strip.text = element_text(size = 12)) -> exp.rate
 
-ggsave("./Maturity research/Figures/exploitation_rate_timeseries.png", width = 8, height = 6)        
+
+# Ice ----
+# Load Jan-April ice data
+ice <- read.csv(paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv")) %>%
+  dplyr::select(year, se, value) %>%
+  rename(YEAR = year, ICE = value) %>%
+  filter(YEAR > 1988)
+
+ggplot(ice, aes(YEAR, ICE))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  #geom_errorbar(aes(ymin = ICE - se, ymax = ICE + se))+
+  theme_bw()+
+  xlab("Year")+
+  ylab("Ice area fraction")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        strip.text = element_text(size = 12)) -> ice.plot
+
+# Male abundance plots
+ind.pref <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                     size_min = 101, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Industry-preferred males (≥101mm)")
+
+
+lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 95, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Large males (≥95mm)")
+
+cohort <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 40, size_max = 60,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Pre-mature males (40-60mm)")
+
+rbind(cohort, lg.male, ind.pref) %>%
+  group_by(cat) %>%
+  mutate(ABUND_SCALED = scale(ABUND)) %>%
+  ungroup() %>%
+  filter(YEAR > 1988)-> plot.dat
+
+
+ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  scale_color_manual(values = c("cadetblue", "darkred", "goldenrod"), name = "")+
+  xlab("Year")+
+  ylab("Scaled abundance (millions)")+
+  theme(
+    legend.position = c(0.3, 0.98),   # x, y in npc (0–1)
+    legend.justification = c("left", "top"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.title = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 12)) -> male.plot 
+
+# Big fig 1
+#study site, ice time series, and exploitation rate time series. Then one panel plotting male abundance 
+# (pre-maturity / 40-60mm, >95, and >101) - all of these scaled so highest abundance year = 1. 
+# Then one panel for female abundance (35-45 mm and mature) also scaled to 1.  
+(study_site + exp.rate+ice.plot)/male.plot
 
