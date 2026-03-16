@@ -57,6 +57,7 @@ ggplot(SAM.dat, aes(YEAR, SAM))+
   geom_smooth()
 
 
+
 # Weighted prop mature in 55-65
 # Calculate weighted mean SAM for mature female
 fem.pmat <- spec.dat.sel$specimen %>% 
@@ -66,36 +67,22 @@ fem.pmat <- spec.dat.sel$specimen %>%
   dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR, MATURE) %>%
   group_by(YEAR) %>%
   reframe(TOT_CRAB = sum(SAMPLING_FACTOR),
-         MATURE = sum(SAMPLING_FACTOR[MATURE == 1]),
-         IMMATURE = TOT_CRAB - MATURE,
-         PROP_MATURE = MATURE/TOT_CRAB,
-         PROP_IMMATURE = IMMATURE/TOT_CRAB) %>%
+          MATURE = sum(SAMPLING_FACTOR[MATURE == 1]),
+          IMMATURE = TOT_CRAB - MATURE,
+          PROP_MATURE = MATURE/TOT_CRAB,
+          PROP_IMMATURE = IMMATURE/TOT_CRAB) %>%
   dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE, TOT_CRAB) %>%
   rename(PMAT_5565 = PROP_MATURE) 
 
-fem.pmat <- spec.dat.sel$specimen %>% 
-  filter(SEX == 2, SIZE >=55 & SIZE <=65, CLUTCH_SIZE>0) %>%
-  dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR) %>%
-  group_by(YEAR) %>%
-  reframe(TOT_MAT5565 = sum(SAMPLING_FACTOR)) 
-
-fem.pmat2 <- spec.dat.sel$specimen %>% 
-  filter(SEX == 2, CLUTCH_SIZE>0) %>%
-  dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR) %>%
-  group_by(YEAR) %>%
-  reframe(TOT_MAT = sum(SAMPLING_FACTOR)) 
-
-tt <- right_join(fem.pmat, fem.pmat2) %>%
-  mutate(PMAT_5565 = TOT_MAT5565/TOT_MAT)
-
 dat <- right_join(fem.pmat, SAM.dat)
 
-ggplot(tt, aes(YEAR, PMAT_5565))+
+ggplot(dat, aes(YEAR, PMAT_5565))+
   geom_point()+
   geom_line() +
   theme_bw()
 
 summary(lme(PMAT_5565 ~ YEAR, data = na.omit(dat), random = ~ 1 | YEAR, correlation = corAR1()))
+
 
 # All male large male abundance
 bioabund.lg.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
@@ -319,7 +306,8 @@ model.dat3 <- fem.model.dat2 %>%
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
     # FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
     #FEM_MAT_ABUND_avg2    = FEM_MAT_ABUND_avg2,
-    FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2, 1),
+    FEM_MAT_ABUND_avg2  = FEM_MAT_ABUND_avg2,
+    FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2,1),
     #FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     
     
@@ -353,7 +341,7 @@ model.dat3 <- fem.model.dat2 %>%
     
     FEM_COHORT_ABUND,
     
-    FEM_MAT_ABUND, FEM_MAT_ABUND_avg2lag1,
+    FEM_MAT_ABUND, FEM_MAT_ABUND_avg2, 
     #FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, FEM_MAT_ABUND_avg2lag2,
     
     MALE_LG_ABUND, MALE_LG_ABUND_avg2,
@@ -584,7 +572,8 @@ read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
 # fit model
 mod1 <- gamm(
   SAM ~ 
-    s(FEM_MAT_ABUND_avg2lag1, k = 4),
+    s(FEM_MAT_ABUND_avg2, k = 4)+
+  s(FEM_TOCC_lag2, k = 4),
   correlation = corAR1(),
   data        = model.dat3,
   family      = gaussian(),
@@ -672,6 +661,12 @@ ggplot(long_df,
 
 ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, height = 7)
 
+# # select top |cor| for *negative* lags (covariate leads SAM)
+best_lags <- long_df %>%
+  filter(lag <= 0 & lag >=-2) %>%
+  group_by(short_var) %>%
+  slice_max(order_by = abs(cor), n = 3, with_ties = FALSE)
+
 ## 2. Add chosen lagged covariates -------------------------------
   model.dat3 <- fem.model.dat2 %>%
   arrange(YEAR) %>%
@@ -683,7 +678,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
     #FEM_MAT_ABUND  = FEM_MAT_ABUND,
     # FEM_MAT_ABUND_lag1 = lag(FEM_MAT_ABUND, 1),
     FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
-    FEM_MAT_ABUND_avg2    = FEM_MAT_ABUND_avg2,
+    FEM_MAT_ABUND_avg2lag1    = lag(FEM_MAT_ABUND_avg2,1),
     # FEM_MAT_ABUND_avg2lag1  = lag(FEM_MAT_ABUND_avg2, 1),
     # FEM_MAT_ABUND_avg2lag2  = lag(FEM_MAT_ABUND_avg2, 2),
     
@@ -719,7 +714,7 @@ ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, he
     
     FEM_COHORT_ABUND,
     
-    FEM_MAT_ABUND_lag2, FEM_MAT_ABUND_avg2, 
+    FEM_MAT_ABUND_lag2,  FEM_MAT_ABUND_avg2lag1, 
     #FEM_MAT_ABUND_avg2lag2, FEM_MAT_ABUND, FEM_MAT_ABUND_lag1, FEM_MAT_ABUND_avg2lag1,
     
     MALE_LG_ABUND_avg2lag1, MALE_LG_ABUND_lag2, MALE_LG_ABUND_avg2,
@@ -850,30 +845,40 @@ fits_initial <- purrr::pmap_dfr(
     
     if (!is.null(fit$error)) {
       return(tibble::tibble(
-        sm_term   = sm,
-        mat_term  = mat,
-        male_term = lg,
-        ice_term  = ice,
-        tocc_term = tocc,
-        k_terms   = length(terms),
-        GCV       = NA_real_,
-        cv_rmse   = NA_real_,
-        edf_total = NA_real_,
-        error     = conditionMessage(fit$error)
+        sm_term        = sm,
+        mat_term       = mat,
+        male_term      = lg,
+        ice_term       = ice,
+        tocc_term      = tocc,
+        k_terms        = length(terms),
+        GCV            = NA_real_,
+        cv_rmse        = NA_real_,
+        edf_total      = NA_real_,
+        worst_conc_max = NA_real_,
+        error          = conditionMessage(fit$error)
       ))
     }
     
+    # concurvity on the successful fit
+    cc <- try(concurvity(fit$result, full = TRUE), silent = TRUE)
+    worst_conc_max <- if (inherits(cc, "try-error")) {
+      NA_real_
+    } else {
+      max(cc["worst", ], na.rm = TRUE)
+    }
+    
     tibble::tibble(
-      sm_term   = sm,
-      mat_term  = mat,
-      male_term = lg,
-      ice_term  = ice,
-      tocc_term = tocc,
-      k_terms   = length(terms),
-      GCV       = fit$result$gcv.ubre,
-      cv_rmse   = NA_real_,
-      edf_total = sum(fit$result$edf),
-      error     = NA_character_
+      sm_term        = sm,
+      mat_term       = mat,
+      male_term      = lg,
+      ice_term       = ice,
+      tocc_term      = tocc,
+      k_terms        = length(terms),
+      GCV            = fit$result$gcv.ubre,
+      cv_rmse        = NA_real_,
+      edf_total      = sum(fit$result$edf),
+      worst_conc_max = worst_conc_max,
+      error          = NA_character_
     )
   }
 )
@@ -886,7 +891,8 @@ fits_GCV <- fits_initial %>%
   dplyr::mutate(
     dGCV = GCV - min(GCV, na.rm = TRUE)
   ) %>%
-  dplyr::filter(dGCV <= 0.7)   # choose a small GCV window you like
+  dplyr::filter(dGCV <= 2, 
+                worst_conc_max <=0.6)  # need to add this filter due to high concurvity among smooths
 
 # helper that returns list(RMSE = ..., converged = TRUE/FALSE)
 cv_rmse_flag <- function(fml, data, k_folds, gap, min_train) {
@@ -960,30 +966,20 @@ write.csv(fits_ranked, "./Maturity research/Output/snow_female_pmat5565_modelsel
 # Fit best model
 mod1 <- gam(
   cbind(MATURE, IMMATURE) ~ 
-    #s(FEM_MAT_ABUND_lag2, k =4) +
+    #s(FEM_MAT_ABUND_avg2, k =4) +
       s(MALE_LG_ABUND_avg2lag1, k =4) + 
     s(ICE_avg2, k = 4),
+  #s(FEM_TOCC_avg2, k = 4),
   data   = model.dat3,
   family = quasibinomial(link = "logit"),
   method = "REML"
 )
 
-saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
+saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam2.rda")
 
-# # Fit best model
-# mod1 <- gam(
-#   cbind(MATURE, IMMATURE) ~ 
-#     #s(FEM_MAT_ABUND_lag2, k =4) +
-#     s(MALE_LG_ABUND_avg2lag1, k =4) + 
-#     s(ICE_avg2, k = 4)+
-#     s(FEM_TOCC_avg2, k=4),
-#   data   = model.dat3,
-#   family = quasibinomial(link = "logit"),
-#   method = "REML"
-# )
-gam.check(mod1)
+gam.check(mod2)
 summary(mod1)
-acf(mod1$residuals)
+acf(mod2$residuals)
 
 # plot facetted smooths
 sm.dat <- smooth_estimates(mod1) %>%
