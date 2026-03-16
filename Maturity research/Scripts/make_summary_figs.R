@@ -513,29 +513,26 @@ ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
     strip.text = element_text(size = 12)) -> male.plot 
 
 # Female abundance plots
-instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
                                     size_min = 35, size_max = 45,  sex = "female", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
-  reframe(FEM_COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
-  dplyr::select(YEAR, FEM_COHORT_ABUND) 
-
-
-lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                   size_min = 95, size_max = NULL,  sex = "male") %>%
-  group_by(YEAR) %>%
-  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
   dplyr::select(YEAR, ABUND) %>%
-  mutate(cat = "Large males (≥95mm)")
+  mutate(cat = "Pre-mature females (35-45mm)")
 
-cohort <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                  size_min = 40, size_max = 60,  sex = "male") %>%
+
+# mature female abundance
+matfem <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                                size_min = NULL, size_max = NULL,  sex = "female", 
+                                                crab_category = c("mature_female")) %>%
   group_by(YEAR) %>%
-  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
   dplyr::select(YEAR, ABUND) %>%
-  mutate(cat = "Pre-mature males (40-60mm)")
+  mutate(cat = "Mature females")
 
-rbind(cohort, lg.male, ind.pref) %>%
+
+rbind(cohort, matfem) %>%
   group_by(cat) %>%
   mutate(ABUND_SCALED = scale(ABUND)) %>%
   ungroup() %>%
@@ -547,7 +544,7 @@ ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
   geom_point(size = 2)+
   geom_line(linewidth = 1)+
   theme_bw()+
-  scale_color_manual(values = c("cadetblue", "darkred", "goldenrod"), name = "")+
+  scale_color_manual(values = c("cadetblue", "goldenrod"), name = "")+
   xlab("Year")+
   ylab("Scaled abundance (millions)")+
   theme(
@@ -557,11 +554,17 @@ ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
     legend.title = element_blank(),
     axis.text = element_text(size = 12),
     axis.title = element_text(size = 12),
-    strip.text = element_text(size = 12)) -> male.plot 
+    strip.text = element_text(size = 12)) -> female.plot 
 
 # Big fig 1
 #study site, ice time series, and exploitation rate time series. Then one panel plotting male abundance 
 # (pre-maturity / 40-60mm, >95, and >101) - all of these scaled so highest abundance year = 1. 
 # Then one panel for female abundance (35-45 mm and mature) also scaled to 1.  
-(study_site + exp.rate+ice.plot)/male.plot
+(male.plot/female.plot + plot_layout(axis_titles = "collect", axes = "collect_x"))
+ptop <- (study_site + exp.rate+ice.plot)& theme(plot.margin = unit(c(0,   0.2, 0.2, 0.2), "lines"))
+pbottom <- male.plot/female.plot + plot_layout(axis_titles = "collect", axes = "collect_x", heights = c(1.4, 1.4)) &
+  theme(plot.margin = unit(c(0.2, 0.2, 0,   0.2), "lines"))
 
+ptop/pbottom + plot_layout(heights = c(1, 1.5))
+
+ggsave("./Maturity research/Figures/Fig1.png", height= 10, width = 8)
