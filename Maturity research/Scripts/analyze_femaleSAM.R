@@ -108,7 +108,7 @@ bioabund.lg.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = 
 # mature female abundance
 bioabund.matfem.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
                                             size_min = NULL, size_max = NULL,  sex = "female", 
-                                            shell_condition = c("mature_female")) %>%
+                                            crab_category = c("mature_female")) %>%
   group_by(YEAR) %>%
   reframe(FEM_MAT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
   dplyr::select(YEAR, FEM_MAT_ABUND) 

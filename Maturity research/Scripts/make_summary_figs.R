@@ -352,10 +352,216 @@ ggplot() +
         legend.key.size = unit(0.65,'cm'),
         legend.background = element_blank(),
         axis.title = element_blank(),
-        axis.text = element_text(size = 10),
+        axis.text = element_text(size = 12),
         legend.text = element_text(size = 10), 
         legend.title = element_text(size = 10),
         plot.background = element_rect(fill = "white", color = NA),
         panel.grid.major = element_blank()) -> study_site
 
+
+# Exploitation rate ----
+
+# Specimen selectivity data
+sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
+  dplyr::rename(SEL = selectivity, SIZE_5MM = size) %>%
+  dplyr::filter(year != "GAM predictions")
+
+s.gam <- mgcv::gam(SEL ~ s(SIZE_5MM),
+                   data   = sel,
+                   family = Gamma(link = "log"))
+
+# Survey specimen data
+spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
+
+spec.dat.sel <- spec.dat
+spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
+  dplyr::mutate(
+    BIN_5MM = ggplot2::cut_width(SIZE_1MM,
+                                 width  = 5,
+                                 center = 2.5,
+                                 closed = "left",
+                                 dig.lab = 4),
+    BIN2 = BIN_5MM
+  ) %>%
+  tidyr::separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
+  dplyr::mutate(
+    LOWER    = as.numeric(sub('.', '', LOWER)),
+    UPPER    = as.numeric(gsub('.$', '', UPPER)),
+    SIZE_5MM = (UPPER + LOWER)/2
+  ) %>%
+  dplyr::mutate(
+    SEL             = predict(s.gam, newdata = ., type = "response"),
+    SAMPLING_FACTOR = SAMPLING_FACTOR / SEL
+  )
+
+# Survey biomass, already selectivity-adjusted (>= 101 mm males)
+bioabund.indpref <- crabpack::calc_bioabund(
+  crab_data = spec.dat.sel,
+  species   = "SNOW",
+  size_min  = 101,
+  size_max  = NULL,
+  sex       = "male"
+  #shell_condition = "new_hardshell"
+) %>%
+  mutate(
+    ABUNDANCE = ABUNDANCE / 1e6,
+    BIOMASS   = BIOMASS_MT / 1000        # kt
+  ) %>%
+  dplyr::select(YEAR, ABUNDANCE, BIOMASS)
+
+# Directed fishery retained + discard biomass (kt)
+df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") %>%
+  mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
+  dplyr::select(Year, directedfish_biomass) %>%
+  rename(YEAR = Year, DF_BIOMASS = directedfish_biomass)
+
+# Natural mortality and months between survey and fishery
+M <- 0.27
+months_between <- 6 # Mid-survey (July) to peak fishing (January) = 6
+
+df.exp <- df.dat %>%
+  right_join(bioabund.indpref, by = "YEAR") %>%
+  mutate(
+    DF_BIOMASS = case_when(
+      YEAR %in% c(2022:2023) ~ 0,
+      TRUE ~ DF_BIOMASS
+    ),
+    frac_year  = months_between / 12,
+    BIOMASS_fishery = BIOMASS * exp(-M * frac_year),
+    EXP_RATE   = DF_BIOMASS / BIOMASS_fishery #(survey biomass available to the fishery)
+  ) %>%
+  dplyr::select(YEAR, DF_BIOMASS, EXP_RATE) %>%
+  na.omit() %>%
+  full_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1)))%>%
+  filter(YEAR >=1989)
  
+
+ggplot(df.exp, aes(YEAR, EXP_RATE))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  ylab("Exploitation rate")+
+  xlab("Year")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        strip.text = element_text(size = 12)) -> exp.rate
+
+
+# Ice ----
+# Load Jan-April ice data
+ice <- read.csv(paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv")) %>%
+  dplyr::select(year, se, value) %>%
+  rename(YEAR = year, ICE = value) %>%
+  filter(YEAR > 1988)
+
+ggplot(ice, aes(YEAR, ICE))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  #geom_errorbar(aes(ymin = ICE - se, ymax = ICE + se))+
+  theme_bw()+
+  xlab("Year")+
+  ylab("Ice area fraction")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        strip.text = element_text(size = 12)) -> ice.plot
+
+# Male abundance plots
+ind.pref <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                     size_min = 101, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Industry-preferred males (≥101mm)")
+
+
+lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 95, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Large males (≥95mm)")
+
+cohort <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 40, size_max = 60,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Pre-mature males (40-60mm)")
+
+rbind(cohort, lg.male, ind.pref) %>%
+  group_by(cat) %>%
+  mutate(ABUND_SCALED = scale(ABUND)) %>%
+  ungroup() %>%
+  filter(YEAR > 1988) %>%
+  full_join(., expand.grid(YEAR = seq(min(.$YEAR), max(.$YEAR)), cat = unique(.$cat))) -> plot.dat
+
+
+ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  scale_color_manual(values = c("cadetblue", "darkred", "goldenrod"), name = "")+
+  xlab("Year")+
+  ylab("Scaled abundance (millions)")+
+  theme(
+    legend.position = c(0.3, 0.98),   # x, y in npc (0–1)
+    legend.justification = c("left", "top"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.title = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 12)) -> male.plot 
+
+# Female abundance plots
+instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                    size_min = 35, size_max = 45,  sex = "female", 
+                                    shell_condition = c("new_hardshell")) %>%
+  group_by(YEAR) %>%
+  reframe(FEM_COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, FEM_COHORT_ABUND) 
+
+
+lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 95, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Large males (≥95mm)")
+
+cohort <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                  size_min = 40, size_max = 60,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Pre-mature males (40-60mm)")
+
+rbind(cohort, lg.male, ind.pref) %>%
+  group_by(cat) %>%
+  mutate(ABUND_SCALED = scale(ABUND)) %>%
+  ungroup() %>%
+  filter(YEAR > 1988) %>%
+  full_join(., expand.grid(YEAR = seq(min(.$YEAR), max(.$YEAR)), cat = unique(.$cat))) -> plot.dat
+
+
+ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  scale_color_manual(values = c("cadetblue", "darkred", "goldenrod"), name = "")+
+  xlab("Year")+
+  ylab("Scaled abundance (millions)")+
+  theme(
+    legend.position = c(0.3, 0.98),   # x, y in npc (0–1)
+    legend.justification = c("left", "top"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.title = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 12)) -> male.plot 
+
+# Big fig 1
+#study site, ice time series, and exploitation rate time series. Then one panel plotting male abundance 
+# (pre-maturity / 40-60mm, >95, and >101) - all of these scaled so highest abundance year = 1. 
+# Then one panel for female abundance (35-45 mm and mature) also scaled to 1.  
+(study_site + exp.rate+ice.plot)/male.plot
+

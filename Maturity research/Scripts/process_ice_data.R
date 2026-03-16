@@ -40,76 +40,99 @@ wf_request(
 )
 
 # 3) PROCESS ICE FILES ----
-# Specify unique ice file names
-files <- list.files("./Maturity research/Data/")
+files     <- list.files("./Maturity research/Data/")
 ice.files <- files[grep("ERA5_ice", files)]
 
-ice.means <- data.frame()
+ice.means   <- data.frame()
 ice.spatial <- data.frame()
-for(ii in 1:length(ice.files)){
-  # Process ice data using tidync()
+
+for (ii in seq_along(ice.files)) {
   tidync(paste0("./Maturity research/Data/", ice.files[ii])) %>%
     hyper_filter(longitude = longitude >= -182 & longitude <= -154,
-                 latitude = latitude >= 50 & latitude <= 64) %>%
+                 latitude  = latitude  >= 50   & latitude  <= 64) %>%
     activate("siconc") %>%
     hyper_tibble() %>%
-    mutate(year = lubridate::year(valid_time),
-           month = lubridate::month(valid_time),
-           latitude = as.numeric(as.character(latitude)),
-           longitude = as.numeric(as.character(longitude))) %>%
-    filter(month %in% c(1:4)) -> ice
+    mutate(
+      year      = lubridate::year(valid_time),
+      month     = lubridate::month(valid_time),
+      latitude  = as.numeric(as.character(latitude)),
+      longitude = as.numeric(as.character(longitude))
+    ) %>%
+    filter(month %in% 1:4) -> ice
   
+  # monthly means + SD / SE
   ice %>%
-    group_by(year, month)  %>%
-    reframe(value= mean(siconc)) -> mean.ice
+    group_by(year, month) %>%
+    summarise(
+      mean  = mean(siconc, na.rm = TRUE),
+      sd    = sd(siconc,   na.rm = TRUE),
+      n     = sum(!is.na(siconc)),
+      se    = sd / sqrt(n),
+      .groups = "drop"
+    ) -> mean.ice
   
+  # cell-level monthly means
   ice %>%
-    group_by(year, month, latitude, longitude)  %>%
-    reframe(value= mean(siconc)) -> spatial.ice
+    group_by(year, month, latitude, longitude) %>%
+    summarise(
+      mean = mean(siconc, na.rm = TRUE),
+      .groups = "drop"
+    ) -> spatial.ice
   
-  
-  
-  ice.means <- rbind(ice.means, mean.ice)
-  ice.spatial <- rbind(ice.spatial, spatial.ice)
-  
+  ice.means   <- bind_rows(ice.means,   mean.ice)
+  ice.spatial <- bind_rows(ice.spatial, spatial.ice)
 }
 
-# Scale, and compute Jan-Feb and Mar-Apr means
-ice.means %>%
-  group_by(month) %>%
-  mutate(value = value,
-         name = case_when((month %in% 1:2) ~ "Jan-Feb ice",
-                          TRUE ~ "Mar-Apr ice")) %>%
-  ungroup() %>%
+## Jan–Feb / Mar–Apr means with SE (per grid cell and per year)
+ice.dat <- ice.means %>%
+  mutate(name = if_else(month %in% 1:2, "Jan-Feb ice", "Mar-Apr ice")) %>%
   group_by(year, name) %>%
-  reframe(value = mean(value)) -> ice.dat
+  summarise(
+    value = mean(mean),
+    se    = sqrt(sum(se^2) / n()),
+    .groups = "drop"
+  )
 
-# Scale, and compute Jan-Feb and Mar-Apr means
-ice.spatial %>%
-  group_by(month, latitude, longitude) %>%
-  mutate(value = value,
-         name = case_when((month %in% 1:2) ~ "Jan-Feb ice",
-                          TRUE ~ "Mar-Apr ice")) %>%
-  ungroup() %>%
+spatial.ice.dat <- ice.spatial %>%
+  mutate(name = if_else(month %in% 1:2, "Jan-Feb ice", "Mar-Apr ice")) %>%
   group_by(year, latitude, longitude, name) %>%
-  reframe(value = mean(value)) -> spatial.ice.dat
+  summarise(
+    value = mean(mean),
+    .groups = "drop"
+  )
 
+write.csv(
+  ice.dat,
+  paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"),
+  row.names = FALSE
+)
+write.csv(
+  spatial.ice.dat,
+  paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"),
+  row.names = FALSE
+)
 
-# Save
-write.csv(ice.dat, paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"), row.names = FALSE)
-write.csv(spatial.ice.dat, paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
-
+## EBS‑wide annual means with SE directly from spatial.ice.dat
 region_layers$survey.area -> pp
-ice <- read.csv("./Maturity research/Output/spatial_ice_means_1980-2025.csv") %>%
-  st_as_sf(., coords = c("longitude", "latitude"), crs = crs.latlon) %>%
-  st_transform(., st_crs(pp)) %>%
-  st_intersection(., pp)
 
+ice_sf <- spatial.ice.dat %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs.latlon) %>%
+  st_transform(st_crs(pp)) %>%
+  st_intersection(pp)
 
-ebs.ice <- ice %>%
-  na.omit() %>%
-  as.data.frame() %>%
-  group_by(year) %>%
-  reframe(value = mean(value))
+ebs.ice <- ice_sf %>%
+  as.data.frame() %>% 
+  group_by(year) %>%          # keep Jan–Feb vs Mar–Apr if you want
+  summarise(
+    value = mean(value, na.rm = TRUE),
+    sd    = sd(value,   na.rm = TRUE),
+    n     = sum(!is.na(value)),
+    se    = sd / sqrt(n),
+    .groups = "drop"
+  )
 
-write.csv(ebs.ice, paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv"), row.names = FALSE)
+write.csv(
+  ebs.ice,
+  paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv"),
+  row.names = FALSE
+)
