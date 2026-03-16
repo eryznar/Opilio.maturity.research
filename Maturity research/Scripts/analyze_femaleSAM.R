@@ -73,9 +73,24 @@ fem.pmat <- spec.dat.sel$specimen %>%
   dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE, TOT_CRAB) %>%
   rename(PMAT_5565 = PROP_MATURE) 
 
+fem.pmat <- spec.dat.sel$specimen %>% 
+  filter(SEX == 2, SIZE >=55 & SIZE <=65, CLUTCH_SIZE>0) %>%
+  dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR) %>%
+  group_by(YEAR) %>%
+  reframe(TOT_MAT5565 = sum(SAMPLING_FACTOR)) 
+
+fem.pmat2 <- spec.dat.sel$specimen %>% 
+  filter(SEX == 2, CLUTCH_SIZE>0) %>%
+  dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR) %>%
+  group_by(YEAR) %>%
+  reframe(TOT_MAT = sum(SAMPLING_FACTOR)) 
+
+tt <- right_join(fem.pmat, fem.pmat2) %>%
+  mutate(PMAT_5565 = TOT_MAT5565/TOT_MAT)
+
 dat <- right_join(fem.pmat, SAM.dat)
 
-ggplot(dat, aes(YEAR, PMAT_5565))+
+ggplot(tt, aes(YEAR, PMAT_5565))+
   geom_point()+
   geom_line() +
   theme_bw()
