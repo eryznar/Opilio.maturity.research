@@ -93,43 +93,29 @@ ice.dat <- ice.means %>%
     .groups = "drop"
   )
 
-spatial.ice.dat <- ice.spatial %>%
-  mutate(name = if_else(month %in% 1:2, "Jan-Feb ice", "Mar-Apr ice")) %>%
-  group_by(year, latitude, longitude, name) %>%
-  summarise(
-    value = mean(mean),
-    .groups = "drop"
-  )
-
-write.csv(
-  ice.dat,
-  paste0("./Maturity research/Output/ice_means_1980-", current.year, ".csv"),
-  row.names = FALSE
-)
-write.csv(
-  spatial.ice.dat,
-  paste0("./Maturity research/Output/spatial_ice_means_1980-", current.year, ".csv"),
-  row.names = FALSE
-)
-
 ## EBS‑wide annual means with SE directly from spatial.ice.dat
 region_layers$survey.area -> pp
 
-ice_sf <- spatial.ice.dat %>%
+
+ice.sf  <- ice.spatial %>%
+  mutate(name = if_else(month %in% 1:2, "Jan-Feb ice", "Mar-Apr ice")) %>%
+  #filter(year > 1987) %>%
   st_as_sf(coords = c("longitude", "latitude"), crs = crs.latlon) %>%
   st_transform(st_crs(pp)) %>%
-  st_intersection(pp)
+  st_intersection(pp) %>%
+  as.data.frame() 
 
-ebs.ice <- ice_sf %>%
-  as.data.frame() %>% 
-  group_by(year) %>%          # keep Jan–Feb vs Mar–Apr if you want
+ ice.sf %>%
+  group_by(year) %>%
   summarise(
-    value = mean(value, na.rm = TRUE),
-    sd    = sd(value,   na.rm = TRUE),
-    n     = sum(!is.na(value)),
+    value = mean(mean, na.rm = TRUE),
+    sd    = sd(mean,   na.rm = TRUE),
+    n     = dplyr::n(),              # or sum(!is.na(value))
     se    = sd / sqrt(n),
     .groups = "drop"
-  )
+  ) -> ebs.ice
+
+
 
 write.csv(
   ebs.ice,
