@@ -338,7 +338,7 @@ data.frame(x = c(-178.5, -150),
 ggplot() +
   geom_sf(data = region_layers$bathymetry, color=alpha("grey70")) +
   # geom_sf(data = region_layers$survey.grid, fill=NA, color=alpha("grey70"), linewidth = 1)+
-  geom_sf(data = region_layers$survey.area, fill = alpha("goldenrod", alpha=0.3), size = 0) +
+  geom_sf(data = region_layers$survey.area, fill = alpha("cadetblue", alpha=0.3), size = 0) +
   geom_sf(data = region_layers$akland, fill = "grey80", size=0.1) +
   geom_sf(data = region_layers$survey.area, fill = NA) +
   #scale_x_continuous(breaks = c(-180, -175, -170, -165, -160, -155, -150), labels = paste0(c(180, 175, 170, 165, 160, 155, 150), "°W")) + 
@@ -492,7 +492,55 @@ rbind(cohort, lg.male, ind.pref) %>%
   group_by(cat) %>%
   mutate(ABUND_SCALED = scale(ABUND)) %>%
   ungroup() %>%
-  filter(YEAR > 1988)-> plot.dat
+  filter(YEAR > 1988) %>%
+  full_join(., expand.grid(YEAR = seq(min(.$YEAR), max(.$YEAR)), cat = unique(.$cat))) -> plot.dat
+
+
+ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
+  geom_point(size = 2)+
+  geom_line(linewidth = 1)+
+  theme_bw()+
+  scale_color_manual(values = c("cadetblue", "darkred", "goldenrod"), name = "")+
+  xlab("Year")+
+  ylab("Scaled abundance (millions)")+
+  theme(
+    legend.position = c(0.3, 0.98),   # x, y in npc (0–1)
+    legend.justification = c("left", "top"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.title = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 12)) -> male.plot 
+
+# Female abundance plots
+instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                    size_min = 35, size_max = 45,  sex = "female", 
+                                    shell_condition = c("new_hardshell")) %>%
+  group_by(YEAR) %>%
+  reframe(FEM_COHORT_ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, FEM_COHORT_ABUND) 
+
+
+lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 95, size_max = NULL,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Large males (≥95mm)")
+
+cohort <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                  size_min = 40, size_max = 60,  sex = "male") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
+  dplyr::select(YEAR, ABUND) %>%
+  mutate(cat = "Pre-mature males (40-60mm)")
+
+rbind(cohort, lg.male, ind.pref) %>%
+  group_by(cat) %>%
+  mutate(ABUND_SCALED = scale(ABUND)) %>%
+  ungroup() %>%
+  filter(YEAR > 1988) %>%
+  full_join(., expand.grid(YEAR = seq(min(.$YEAR), max(.$YEAR)), cat = unique(.$cat))) -> plot.dat
 
 
 ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
