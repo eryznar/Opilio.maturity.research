@@ -67,6 +67,28 @@ cohort <- crabpack::calc_bioabund(
   dplyr::select(YEAR, SIZE_1MM, COHORT_ABUND) %>%
   dplyr::filter(YEAR >= 1989)
 
+
+immature_cohort <- read.csv("./Maturity research/Data/immature_cohort_abund.csv") %>%
+                    mutate(COHORT_ABUND = case_when(YEAR %in% c(2008, 2012, 2014, 2016, 2020) ~ NA,
+                                                    TRUE ~ COHORT_ABUND)) %>%
+                    filter(is.na(COHORT_ABUND) == FALSE)
+
+
+c1 <- cohort %>%
+        group_by(YEAR) %>%
+        reframe(aa = sum(COHORT_ABUND))
+
+c2 <- immature_cohort %>%
+  group_by(YEAR) %>%
+  reframe(aa = sum(COHORT_ABUND)) 
+
+ggplot()+
+  geom_line(c1, mapping= aes(YEAR, aa), color = "blue")+
+  geom_line(c2, mapping= aes(YEAR, aa), color = "green")
+
+cohort <- immature_cohort # only immatures as recruits since they grow and mature later
+  
+
 ## PREPARE OGIVE MATRIX ------------------------------------------------------
 ogive <- ogive_raw %>%
   dplyr::select(YEAR, SIZE_5MM, PROP_MATURE) %>%
@@ -483,7 +505,8 @@ cum_sum_df <- sim_df %>%
   dplyr::mutate(type = "Cumulative mature \u2265101mm")
 
 ## Combine both metrics
-sum_long <- dplyr::bind_rows(new_sum_df, cum_sum_df)
+sum_long <- dplyr::bind_rows(new_sum_df, cum_sum_df) %>% 
+  mutate(type = factor(type, levels = c("Newly mature ≥101mm", "Cumulative mature ≥101mm")))
 
 ## Time‑series plots across all 36 start years
 ggplot(sum_long %>% dplyr::filter(exploitation != 1),
