@@ -612,7 +612,6 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
-ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots.png", width =8, height = 7)
 
 # PROP_INDUSTRY PREFERRED ----
 # Mature abundance >=101 SH2
@@ -659,6 +658,23 @@ indpref.dat <- right_join(ind.pref, all.mat) %>%
                   filter(YEAR >= 1989) %>%
                right_join(model.dat %>% dplyr::select(!SAM)) %>%
               full_join(expand.grid(YEAR = 2020))
+
+# immature cohort abundance
+mat.dat.sel <- spec.dat
+mat.dat.sel$specimen <- spec.dat.mat %>%
+  dplyr::select(!SAMPLING_FACTOR) %>% # removing original SF
+  rename(SAMPLING_FACTOR = SAMPLING_FACTOR_IMMATURE) # renaming mature SF to SF so crabpack recognizes, this accounts for sel
+
+immature_cohort <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW", 
+                                    size_min = 40, size_max = 60,  sex = "male", 
+                                    shell_condition = c("new_hardshell"),
+                                    bin_1mm = TRUE) %>%
+  dplyr::group_by(YEAR, SIZE_1MM) %>%
+  dplyr::reframe(COHORT_ABUND = sum(ABUNDANCE) / 1e6) %>%  # kt
+  dplyr::select(YEAR, SIZE_1MM, COHORT_ABUND) %>%
+  dplyr::filter(YEAR >= 1989)
+
+write.csv(immature_cohort, "./Maturity research/Data/immature_cohort_abund.csv")
 
 # Add indpref to model dat from above
 model.dat$PMAT_INDPREF <- indpref.dat$PROP_INDPREF
