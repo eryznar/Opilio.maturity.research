@@ -1,7 +1,7 @@
 # LOAD LIBS/PARAMS ---------------------------------------------------------------------------------------
 source("./Maturity research/Scripts/load_libs_params.R")
 
-# SAM
+# SAM ----
 SAM.dat <- rbind(read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>%
                   dplyr::select(YEAR, SAM) %>%
                    mutate(sex = "Male"),
@@ -36,34 +36,35 @@ ggplot(SAM.dat, aes(YEAR, SAM)) +
             aes(x = x, y = y, label = lab),
             size = 6) +
   theme_bw()+
+  #ggtitle("Size-at-50% maturity")+
   theme(axis.text = element_text(size = 14),
         axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14))
+        strip.text = element_text(size = 14)) -> SAM.plot
 
-ggsave("./Maturity research/Figures/SNOW_SAM_timeseries.png", width = 8, height = 7)
+#ggsave("./Maturity research/Figures/SNOW_SAM_timeseries.png", width = 8, height = 7)
 
 
 # TARGET_SIZES ----
 prop.dat <- rbind(read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>%
                    dplyr::select(YEAR, PMAT_INDPREF) %>%
                    rename(value = PMAT_INDPREF) %>%
-                   mutate(type = "Male proportion mature ≥101mm"),
+                   mutate(type = "Males ≥101mm"),
                  read.csv("./Maturity research/Output/SNOW_female_modeldata.csv") %>%
                    dplyr::select(YEAR, PMAT_5565) %>%
                    rename(value = PMAT_5565) %>%
-                   mutate(type = "Female proportion mature 55-65mm")) %>%
+                   mutate(type = "Females 55-65mm")) %>%
   full_join(., expand.grid(YEAR = 1989:2025, 
-                           type = c("Male proportion mature ≥101mm", "Female proportion mature 55-65mm")))
+                           type = c("Males ≥101mm", "Females 55-65mm")))
 
 
-m.dat <- prop.dat %>% filter(type == "Male proportion mature ≥101mm")
+m.dat <- prop.dat %>% filter(type == "Males ≥101mm")
 summary(lme(value ~ YEAR, data = na.omit(m.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 
-f.dat <- prop.dat %>% filter(type =="Female proportion mature 55-65mm")
+f.dat <- prop.dat %>% filter(type =="Females 55-65mm")
 summary(lme(value ~ YEAR, data = na.omit(f.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 
 ann_df <- data.frame(
-  type   = c("Male proportion mature ≥101mm", "Female proportion mature 55-65mm"),
+  type   = c("Males ≥101mm", "Females 55-65mm"),
   x    = c(2015, 2015),  
   y    = c(0.3, 0.5),
   lab  = c("p=0.04*", "p=0.02*")
@@ -75,20 +76,28 @@ ggplot(prop.dat, aes(YEAR, value)) +
   ylab("Proportion mature")+
   xlab("Year")+
   geom_smooth(method = "lm", fill = "cadetblue", color = "cadetblue", alpha = 0.2) +
-  facet_wrap(~ factor(type, levels = c("Male proportion mature ≥101mm", "Female proportion mature 55-65mm")),
+  facet_wrap(~ factor(type, levels = c("Males ≥101mm", "Females 55-65mm")),
              scales = "free_y", nrow = 2) +
   geom_text(data = ann_df,
             aes(x = x, y = y, label = lab),
             size = 6) +
   theme_bw()+
+  #ggtitle("Proportion mature")+
   theme(axis.text = element_text(size = 14),
         axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14)) 
+        strip.text = element_text(size = 14)) -> pmat.plot
 
-ggsave("./Maturity research/Figures/SNOW_PMAT_timeseries.png", width = 8, height = 7)        
+#ggsave("./Maturity research/Figures/SNOW_PMAT_timeseries.png", width = 8, height = 7)        
+
+SAM.plot +plot_annotation(tag_levels = "A") + pmat.plot +
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(size = 17, face = "bold"),
+    plot.tag.position = c(0.06, 0.98))
+
+ggsave("./Maturity research/Figures/SNOW_PMAT&SAM_timeseries.png", width = 8, height = 6)        
 
 
-# OTHER TIME SERIES FOR SI ----
+# TOCC TIME SERIES FOR SI ----
 tocc <- rbind(read.csv("./Maturity research/Output/SNOW_female_modeldata.csv") %>%
             dplyr::select(YEAR, FEM_TOCC) %>%
             rename(TOCC = FEM_TOCC) %>%
@@ -116,8 +125,15 @@ ggsave("./Maturity research/Figures/tocc_ts.png", width= 6, height = 4)
 
 
 
-# MALE SAM DIAGNOSTICS ----
+# MALE SAM DIAGNOSTICS AND EFFECT PLOTS----
 mod <- readRDS("./Maturity research/Models/SNOW_maleSAM_gamm.rda")
+
+mod2  <- mod$gam          # the GAM component
+null_dev <- mod2$null.deviance
+res_dev  <- mod2$deviance
+
+dev_expl <- (null_dev - res_dev) / null_dev * 100
+dev_expl
 
 concurvity(mod$gam)
 
@@ -173,6 +189,67 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 
 ggsave("./Maturity research/Figures/SNOW_maleSAM_diagnostics.png", width = 8, height = 7)
 
+# Effect plots
+# Add partial residuals to the original data for all smooths
+dat_pr <- gratia::add_partial_residuals(
+  data  = mod$gam$model,
+  model = mod$gam
+) 
+
+# identify the smooth columns automatically
+smooth_cols <- grep("^s\\(", names(dat_pr), value = TRUE)
+
+dat_pr_long <- lapply(smooth_cols, function(sc) {
+  # grab the covariate name from the smooth label
+  # e.g. "s(COHORT_ABUND)" -> "COHORT_ABUND"
+  covar <- str_match(sc, "s\\(([^)]+)\\)")[, 2]
+  
+  tibble(
+    .smooth  = sc,
+    x        = dat_pr[[covar]],
+    .partial = dat_pr[[sc]]
+  )
+}) %>%
+  bind_rows()
+
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(aes(ymin = .estimate + 1.96 * .se,
+                  ymax = .estimate - 1.96 * .se),
+              fill = "cadetblue", alpha = 0.25) +
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  # rug for all smooths
+  geom_rug(data = dat_pr_long,
+           aes(x = x),
+           inherit.aes = FALSE,
+           sides = "b",
+           alpha = 0.4) +
+  # partial residuals for all smooths
+  geom_point(data = dat_pr_long,
+             aes(x = x, y = .partial),
+             inherit.aes = FALSE,
+             size = 1, alpha = 0.6) +
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 2,
+    labeller = as_labeller(c(
+      "s(COHORT_ABUND)"  = "Male cohort abundance",
+      "s(LG_ABUND_avg2)" = "Large male abundance (2-year avg)"
+    ))
+  ) +
+  theme_bw() +
+  ylab("Partial effect") +
+  xlab("Value") +
+  theme(
+    axis.text  = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14)
+  )
+
+ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots.png", width =8, height = 6)
+
+
 # MALE PMAT 101 DIAGNOSTICS ----
 mod <- readRDS("./Maturity research/Models/SNOW_malepmat101_gam.rda")
 
@@ -214,7 +291,7 @@ p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
 
 # Histogram of residuals
 p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(breaks = seq(-10, 10, by = 4), colour = "black", fill = "grey80") +
+  geom_histogram(bins = 7, colour = "black", fill = "grey80") +
   labs(title = "Histogram of residuals",
        x = "Residuals", y = "Count") +
   theme_bw()
@@ -225,6 +302,74 @@ p_hist <- ggplot(resid_df, aes(x = resid)) +
 #+ plot_annotation(title = "Male SAM diagnostics")
 
 ggsave("./Maturity research/Figures/SNOW_malepmat101_diagnostics.png", width = 8, height = 7)
+
+# Effect plots
+# 1) Add partial residuals on link scale
+dat_pr <- gratia::add_partial_residuals(
+  data  = mod$model,
+  model = mod,
+  type  = "link",
+  partial_residuals = TRUE
+)
+
+# 2) Identify smooth columns automatically
+smooth_cols <- grep("^s\\(", names(dat_pr), value = TRUE)
+
+# 3) Pivot to long: one row per obs per smooth
+pr_long <- dat_pr |>
+  pivot_longer(
+    cols = all_of(smooth_cols),
+    names_to  = ".smooth",
+    values_to = ".partial"
+  ) |>
+  mutate(
+    covariate = case_when(
+      .smooth == "s(COHORT_ABUND)"  ~ COHORT_ABUND,
+      .smooth == "s(LG_ABUND_avg2)" ~ LG_ABUND_avg2
+      # add more cases here if you add more smooth terms
+    )
+  )
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(aes(ymin = .estimate - 1.96 * .se,
+                  ymax = .estimate + 1.96 * .se),
+              fill = "cadetblue", alpha = 0.25) +
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  geom_rug(data = pr_long,
+           aes(x = covariate),
+           inherit.aes = FALSE,
+           sides = "b",
+           alpha = 0.4) +
+  geom_point(data = pr_long,
+             aes(x = covariate, y = .partial),
+             inherit.aes = FALSE,
+             size = 1, alpha = 0.6) +
+  facet_wrap(
+    ~ .smooth,
+    scales = "free_x",
+    nrow = 2,
+    labeller = as_labeller(c(
+      "s(COHORT_ABUND)"  = "Male cohort abundance",
+      "s(LG_ABUND_avg2)" = "Large male abundance (2-year avg)"
+    ))
+  ) +
+  geom_smooth(data = pr_long,
+              aes(x = covariate, y = .partial),
+              inherit.aes = FALSE,
+              method = "loess", se = FALSE, color = "grey50")+
+  theme_bw() +
+  xlab("Value") +
+  ylab("Partial effect (link)") +
+  theme(
+    axis.text  = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14)
+  )
+
+
+
+
+ggsave("./Maturity research/Figures/SNOW_male_indpref_effectplots.png", width =8, height = 6)
 
 
 
@@ -444,7 +589,7 @@ df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") 
 
 # Natural mortality and months between survey and fishery
 M <- 0.27
-months_between <- 6 # Mid-survey (July) to peak fishing (January) = 6
+months_between <- 7 # Mid-survey (July) to peak fishing (January) = 6
 
 df.exp <- df.dat %>%
   right_join(bioabund.indpref, by = "YEAR") %>%
@@ -462,11 +607,13 @@ df.exp <- df.dat %>%
   full_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1)))%>%
   filter(YEAR >=1989)
  
+summary(lme(EXP_RATE ~ YEAR, data = na.omit(df.exp), random = ~ 1 | YEAR, correlation = corAR1()))
 
 ggplot(df.exp, aes(YEAR, EXP_RATE))+
   geom_point()+
   geom_line()+
   theme_bw()+
+  #geom_smooth(method = "lm")+
   ylab("Exploitation rate")+
   xlab("Year")+
   theme(axis.text = element_text(size = 12),
@@ -503,8 +650,8 @@ ind.pref <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
 
 
 lg.male <- crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
-                                   size_min = 95, size_max = NULL,  sex = "male",
-                                   shell_condition = c("new_hardshell", "oldshell", "very_oldshell")) %>%
+                                   size_min = 95, size_max = NULL,  sex = "male") %>%
+                                   #shell_condition = c("new_hardshell", "oldshell", "very_oldshell")) %>%
   group_by(YEAR) %>%
   reframe(ABUND = sum(ABUNDANCE)) %>% # convert to kt
   dplyr::select(YEAR, ABUND) %>%
@@ -551,6 +698,35 @@ cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
   reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
   dplyr::select(YEAR, ABUND) %>%
   mutate(cat = "Pre-mature females (35-45mm)")
+
+
+imm_3545 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                   size_min = 35, size_max = 45,  sex = "female", 
+                                   crab_category = c("immature_female")) %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ABUND)
+
+imm <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                     size_min = NULL, size_max = NULL,  sex = "female", 
+                                     crab_category = c("immature_female")) %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ABUND)
+
+all <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+                                size_min = NULL, size_max = NULL,  sex = "female") %>%
+  group_by(YEAR) %>%
+  reframe(ABUND = sum(ABUNDANCE)/1e6) %>% # convert to kt
+  dplyr::select(YEAR, ABUND)
+
+pimm<- imm$ABUND/all$ABUND
+pimm3545<- imm_3545$ABUND/all$ABUND
+
+cor(cohort$ABUND, pimm) # cohort strength vs prop immature
+cor(cohort$ABUND, pimm3545) # cohort strength vs prop immature 3545
+cor(cohort$ABUND, all$ABUND) # cohort strength vs all females
+
 
 
 # mature female abundance
