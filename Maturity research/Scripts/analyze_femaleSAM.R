@@ -294,6 +294,12 @@ best_lags <- long_df %>%
   slice_max(order_by = abs(cor), n = 3, with_ties = FALSE)
 
 
+worst.lags <- long_df %>%
+  filter(lag <= 0 & lag >=-2) %>%
+  group_by(short_var) %>%
+  slice_min(order_by = abs(cor), n = 1, with_ties = FALSE)
+
+
 # Add chosen lagged covariates (covariate precedes SAM) ----
 model.dat3 <- fem.model.dat2 %>%
   arrange(YEAR) %>%
@@ -354,7 +360,30 @@ model.dat3 <- fem.model.dat2 %>%
     #FEM_TOCC_lag1, FEM_TOCC_lag2, FEM_TOCC_avg2, FEM_TOCC_avg2lag1,
   )
 
+worst.lags <- fem.model.dat2 %>%
+  arrange(YEAR) %>%
+  mutate(
+   
+    FEM_COHORT_ABUND = FEM_COHORT_ABUND,
+    
+    FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
 
+    MALE_LG_ABUND_lag2 = lag(MALE_LG_ABUND, 2),
+
+    ICE_avg2lag2  = lag(ICE_avg2, 2),
+    
+    FEM_TOCC_lag1 = lag(FEM_TOCC, 1),
+    
+    TOTAL_5565              = MATURE + IMMATURE
+  ) %>%
+  dplyr::select(
+    YEAR, SAM,
+    PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
+    
+    FEM_COHORT_ABUND, FEM_MAT_ABUND_lag2, MALE_LG_ABUND_lag2, ICE_avg2lag2, FEM_TOCC_lag1
+  )
+
+# CV -----
 k_folds <- 3   # kept only for interface compatibility
 
 cv_rmse <- function(fml,
@@ -581,6 +610,19 @@ mod1 <- gamm(
 )
 saveRDS(mod1, "./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
 
+worst.mod <-gamm(
+    SAM ~ 
+    s(FEM_MAT_ABUND_lag2, k = 4)+
+    s(FEM_TOCC_lag1, k = 4),
+  correlation = corAR1(),
+  data        = worst.lags,
+  family      = gaussian(),
+  method = "REML"
+)
+
+saveRDS(worst.mod, "./Maturity research/Models/SNOW_femaleSAM_worstmod.rda")
+
+
 diagnose.gamm(mod1)
 
 # plot facetted smooths
@@ -667,6 +709,11 @@ best_lags <- long_df %>%
   group_by(short_var) %>%
   slice_max(order_by = abs(cor), n = 3, with_ties = FALSE)
 
+worst.lags <- long_df %>%
+  filter(lag <= 0 & lag >=-2) %>%
+  group_by(short_var) %>%
+  slice_min(order_by = abs(cor), n = 1, with_ties = FALSE)
+
 ## 2. Add chosen lagged covariates -------------------------------
   model.dat3 <- fem.model.dat2 %>%
   arrange(YEAR) %>%
@@ -689,7 +736,7 @@ best_lags <- long_df %>%
     #MALE_LG_ABUND_avg2    = MALE_LG_ABUND_avg2,
     MALE_LG_ABUND_avg2lag1  = lag(MALE_LG_ABUND_avg2, 1),
     MALE_LG_ABUND_avg2 = MALE_LG_ABUND_avg2,
-    MALE_LG_ABUND_lag2  = lag(MALE_LG_ABUND, 2),
+    #MALE_LG_ABUND_lag2  = lag(MALE_LG_ABUND, 2),
     
     ICE_lag1  = lag(ICE, 1),
     #ICE_lag1 = lag(ICE, 1),
@@ -727,6 +774,27 @@ best_lags <- long_df %>%
     #FEM_TOCC_avg2lag2, FEM_TOCC ,  FEM_TOCC_lag2, FEM_TOCC_avg2lag1
   )
 
+worst.lags <- fem.model.dat2 %>%
+  arrange(YEAR) %>%
+  mutate(
+    FEM_COHORT_ABUND_lag1 = lag(FEM_COHORT_ABUND, 1),
+    
+    FEM_MAT_ABUND  = FEM_MAT_ABUND,
+    
+    MALE_LG_ABUND  = MALE_LG_ABUND,
+    
+    ICE_lag2 = lag(ICE, 2),
+    
+    FEM_TOCC_lag2 = lag(FEM_TOCC, 2),
+
+    TOTAL_5565              = MATURE + IMMATURE
+  ) %>%
+  dplyr::select(
+    YEAR, SAM,
+    PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
+    
+    FEM_COHORT_ABUND_lag1, FEM_MAT_ABUND,  MALE_LG_ABUND,  ICE_lag2, FEM_TOCC_lag2
+  )
 
 ## ------------------------------------------------------------
 ## Time‑series CV for PMAT_5565 (binomial GAM)
@@ -977,6 +1045,19 @@ mod1 <- gam(
 
 saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam2.rda")
 
+# Fit worst model
+worst.mod <- gam(
+  cbind(MATURE, IMMATURE) ~ 
+    s(MALE_LG_ABUND, k =4) + 
+    s(ICE_lag2, k = 4),
+  data   = worst.lags,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
+saveRDS(worst.mod, "./Maturity research/Models/SNOW_femalepmat5565_worstmod.rda")
+
+
 gam.check(mod2)
 summary(mod1)
 acf(mod2$residuals)
@@ -1004,25 +1085,3 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         strip.text = element_text(size = 14))
 
 ggsave("./Maturity research/Figures/SNOW_female_pmat5565_effectplots.png", width = 8, height = 7)
-
-# Data actually used in the model (after any na.omit etc.)
-dat_use <- mod1$model
-
-# Deviance residuals in the same order/rows
-res <- residuals(mod1, type = "deviance")
-
-par(mfrow = c(1, 2))
-
-with(dat_use, {
-  plot(MALE_LG_ABUND_avg2lag1, res,
-       xlab = "MALE_LG_ABUND_avg2lag1",
-       ylab = "Deviance residuals")
-  abline(h = 0, col = "red", lty = 2)
-  
-  plot(ICE_avg2, res,
-       xlab = "ICE_avg2",
-       ylab = "Deviance residuals")
-  abline(h = 0, col = "red", lty = 2)
-})
-
-par(mfrow = c(1, 1))

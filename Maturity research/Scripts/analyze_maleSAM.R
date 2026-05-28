@@ -317,7 +317,7 @@ long_df <- cc_df %>%
   )
 
 # Plot
-ggplot(long_df,
+ggplot(long_df %>% filter(lag<=0, !(lag == -3 & smooth == "2-year")),
        aes(lag, cor, fill = factor(smooth, levels = c("none", "2-year", "3-year")))) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_fill_manual(values = c("cadetblue", "salmon", "darkgoldenrod"), name = "smooth") +
@@ -325,10 +325,21 @@ ggplot(long_df,
   theme_bw() +
   scale_x_continuous(breaks = seq(-max_lag, max_lag, 1),
                      labels = seq(-max_lag, max_lag, 1)) +
-  theme(panel.grid.minor.x = element_blank())
+  theme(panel.grid.minor.x = element_blank(),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size =14),
+        strip.text = element_text(size = 12),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.text = element_text(size = 14))
 
-ggsave("./Maturity research/Figures/SNOW_male_SAM_ccf.png", width = 8, height = 7)
+ggsave("./Maturity research/Figures/SNOW_male_SAM_ccf.png", width = 5, height = 5)
 
+long_df %>%
+  group_by(short_var) %>%
+  filter(lag <=0) %>%
+  mutate(abs_cor = abs(cor)) %>%
+  slice_min(order_by = abs_cor, n = 1, with_ties = FALSE)
 
 ## ------------------------------------------------------------
 ## 4) Add chosen lagged covariates (covariate precedes SAM)
@@ -358,7 +369,7 @@ model.dat3 <- model.dat2 %>%
     TOCC_avg2 = TOCC_avg2,
     #TOCC_lag1 = lag(TOCC, 1),
     #TOCC_lag2 = lag(TOCC, 2),
-    TOCC_avg2lag1    = lag(TOCC_avg2, 1)
+    #TOCC_avg2lag1    = lag(TOCC_avg2, 1)
     #TOCC_avg2lag1  = lag(TOCC_avg2, 1),
     #TOCC_avg2lag2  = lag(TOCC_avg2, 2),
     
@@ -380,9 +391,33 @@ model.dat3 <- model.dat2 %>%
   )
 
 
+worst.lags <- model.dat3 <- model.dat2 %>%
+  arrange(YEAR) %>%
+  mutate(
+    #SAM = log(SAM),
+    
+    COHORT_ABUND_lag2 = lag(COHORT_ABUND, 2), # hard coding to lag0, no avg
+    
+    LG_ABUND_lag2  = lag(LG_ABUND, 2),
+  
+    ICE_avg2lag2  = lag(ICE_avg2, 2),
+    
+    TOCC_lag2 = lag(TOCC, 2),
+    
+  ) %>%
+  dplyr::select(
+    YEAR, SAM,
+    
+    COHORT_ABUND_lag2,
+   
+    LG_ABUND_lag2,
+    
+    ICE_avg2lag2,
+    TOCC_lag2)
+
 
 ## ------------------------------------------------------------
-## 5) CV function (unchanged)
+## 5) CV function
 ## ------------------------------------------------------------
 k_folds <- 5
 
@@ -612,6 +647,20 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
+# Fit worst SAM model ------
+worst.lags
+
+worst.mod <- gamm(
+  SAM ~ s(COHORT_ABUND_lag2, k = 4) +
+    s(LG_ABUND_lag2,    k = 4),
+  correlation = corAR1(),
+  data        = worst.lags,
+  family      = gaussian()
+)
+
+saveRDS(worst.mod, "./Maturity research/Models/SNOW_maleSAM_worstmod.rda")
+
+
 
 # PROP_INDUSTRY PREFERRED ----
 # Mature abundance >=101 SH2
@@ -770,8 +819,14 @@ ggplot(long_df,
 
 ggsave("./Maturity research/Figures/SNOW_male_indpref_ccf.png", width = 8, height = 7)
 
+long_df %>%
+  group_by(short_var) %>%
+  filter(lag <=0, !(lag == -3 & smooth == "2-year")) %>%
+  mutate(abs_cor = abs(cor)) %>%
+  slice_min(order_by = abs_cor, n = 1, with_ties = FALSE)
+
 ## ------------------------------------------------------------
-## 4) Add chosen lagged covariates (covariate precedes SAM)
+## 4) Add chosen lagged covariates 
 ## ------------------------------------------------------------
 model.dat3 <- model.dat2 %>%
   arrange(YEAR) %>%
@@ -817,6 +872,34 @@ model.dat3 <- model.dat2 %>%
     TOCC, TOCC_avg2,
     #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
+
+
+worst.lags <- model.dat3 <- model.dat2 %>%
+  arrange(YEAR) %>%
+  mutate(
+    #SAM = log(SAM),
+    
+    COHORT_ABUND_lag2 = lag(COHORT_ABUND, 2), # hard coding to lag0, no avg
+    
+    LG_ABUND_lag2avg2  = lag(LG_ABUND_avg2, 2),
+    LG_ABUND_lag2  = lag(LG_ABUND, 2),
+    
+    
+    ICE_avg2lag2  = lag(ICE_avg2, 2),
+    
+    TOCC = TOCC
+    
+  ) %>%
+  dplyr::select(
+    YEAR, PROP_INDPREF, ALL_MAT, IND_PREF,
+    
+    COHORT_ABUND_lag2,
+    
+    LG_ABUND_lag2,
+    LG_ABUND_lag2avg2,
+    
+    ICE_avg2lag2,
+    TOCC)
 
 
 
@@ -1032,4 +1115,190 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         axis.title = element_text(size = 14),
         strip.text = element_text(size = 14))
 
-ggsave("./Maturity research/Figures/SNOW_male_indpref_effectplots.png", width = 8, height = 7)
+#ggsave("./Maturity research/Figures/SNOW_male_indpref_effectplots.png", width = 8, height = 7)
+
+
+# EXPLOITATION GAM ----
+
+# Specimen selectivity data
+sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
+  dplyr::rename(SEL = selectivity, SIZE_5MM = size) %>%
+  dplyr::filter(year != "GAM predictions")
+
+s.gam <- mgcv::gam(SEL ~ s(SIZE_5MM),
+                   data   = sel,
+                   family = Gamma(link = "log"))
+
+# Survey specimen data
+spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
+
+spec.dat.sel <- spec.dat
+spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
+  dplyr::mutate(
+    BIN_5MM = cut_width(SIZE_1MM,
+                        width  = 5,
+                        center = 2.5,
+                        closed = "left",
+                        dig.lab = 4),
+    BIN2 = BIN_5MM
+  ) %>%
+  tidyr::separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
+  dplyr::mutate(
+    LOWER    = as.numeric(sub('.', '', LOWER)),
+    UPPER    = as.numeric(gsub('.$', '', UPPER)),
+    SIZE_5MM = (UPPER + LOWER)/2
+  ) %>%
+  dplyr::mutate(
+    SEL             = predict(s.gam, newdata = ., type = "response"),
+    SAMPLING_FACTOR = SAMPLING_FACTOR / SEL
+  )
+
+# Survey biomass, already selectivity-adjusted (>= 101 mm males)
+bioabund.indpref <- crabpack::calc_bioabund(
+  crab_data = spec.dat.sel,
+  species   = "SNOW",
+  size_min  = 101,
+  size_max  = NULL,
+  sex       = "male"
+  #shell_condition = "new_hardshell"
+) %>%
+  mutate(
+    ABUNDANCE = ABUNDANCE / 1e6,
+    BIOMASS   = BIOMASS_MT / 1000        # kt
+  ) %>%
+  dplyr::select(YEAR, ABUNDANCE, BIOMASS)
+
+# Directed fishery retained + discard biomass (kt)
+df.dat <- read.csv("./Maturity research/Data/opilio_directedfishery_catch.csv") %>%
+  mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
+  dplyr::select(Year, directedfish_biomass) %>%
+  rename(YEAR = Year, DF_BIOMASS = directedfish_biomass)
+
+# Natural mortality and months between survey and fishery
+M <- 0.27
+months_between <- 7 # Mid-survey (July) to peak fishing (January) = 6
+
+df.exp <- df.dat %>%
+  right_join(bioabund.indpref, by = "YEAR") %>%
+  mutate(
+    DF_BIOMASS = case_when(
+      YEAR %in% c(2022:2023) ~ 0,
+      TRUE ~ DF_BIOMASS
+    ),
+    frac_year  = months_between / 12,
+    BIOMASS_fishery = BIOMASS * exp(-M * frac_year),
+    EXP_RATE   = DF_BIOMASS / BIOMASS_fishery #(survey biomass available to the fishery)
+  ) %>%
+  dplyr::select(YEAR, DF_BIOMASS, EXP_RATE) %>%
+  na.omit() %>%
+  full_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1)))%>%
+  filter(YEAR >=1989) %>%
+  arrange(YEAR) %>%
+  mutate(EXP_RATE_avg2 = zoo::rollmean(EXP_RATE,  k = 2, fill = NA, align = "right"),
+         EXP_RATE_lag2avg2 = lag(EXP_RATE_avg2, 2),
+         EXP_RATE_lag2 = lag(EXP_RATE, 2)) 
+
+df.dat <- full_join(model.dat3, df.exp)
+
+df.dat.worstlags <- full_join(worst.lags, df.exp)
+
+
+# fit model 
+mod1 <- gam(
+  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
+    s(COHORT_ABUND, k = 4)+
+    s(LG_ABUND_avg2, k =4)+
+    s(EXP_RATE_avg2, k = 4),
+  data   = df.dat,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
+mod2 <- gam(
+  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
+    s(COHORT_ABUND, k = 4)+
+    s(LG_ABUND_avg2, EXP_RATE_avg2, k = 10),
+  data   = df.dat,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
+saveRDS(mod2, "./Maturity research/Models/SNOW_malepmat101_exploitation_gam.rda")
+
+worst.mod <- gam(
+  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
+    s(COHORT_ABUND_lag2, k = 4)+
+    s(LG_ABUND_lag2avg2, EXP_RATE_lag2avg2, k = 10),
+  data   = df.dat.worstlags,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
+saveRDS(worst.mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_worstmod.rda")
+
+gam.check(mod1)
+gam.check(mod2)
+summary(mod1)
+summary(mod2)
+acf(na.omit(mod1$residuals))
+acf(na.omit(mod2$residuals))
+
+
+# smooth on a grid (as you already had)
+sm.dat <- smooth_estimates(mod2) %>%
+  tidyr::pivot_longer(cols = 6:ncol(.), names_to = "resp", values_to = "value") %>%
+  filter(.smooth == "s(COHORT_ABUND)", !is.na(value))
+
+ggplot(sm.dat, aes(x = value, y = .estimate)) +
+  geom_ribbon(
+    aes(ymin = .estimate - 2 * .se,
+        ymax = .estimate + 2 * .se),
+    fill = "cadetblue", alpha = 0.25
+  ) +
+  geom_line(color = "cadetblue", linewidth = 1.25) +
+  # rug from raw data, not from sm.dat
+  geom_rug(
+    data = df.dat,
+    aes(x = COHORT_ABUND),
+    inherit.aes = FALSE,
+    sides = "b",
+    alpha = 0.4
+  ) +
+  theme_bw() +
+  ylab("Partial effect") +
+  xlab("Cohort abundance") +
+  theme(
+    axis.text  = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14)) -> cbund
+
+p.dat <- na.omit(df.dat)
+p.dat2 <- expand.grid(COHORT_ABUND = mean(p.dat$COHORT_ABUND),
+                      LG_ABUND_avg2 = seq(min(p.dat$LG_ABUND_avg2), max(p.dat$LG_ABUND_avg2), length.out = 50),
+                      EXP_RATE_avg2 = seq(min(p.dat$EXP_RATE_avg2), max(p.dat$EXP_RATE_avg2), length.out = 50))
+
+
+preds <- cbind(p.dat2, pp = predict(mod2, p.dat2, type = "response"))
+
+preds
+
+ggplot(preds, aes(x = LG_ABUND_avg2, y = EXP_RATE_avg2)) +
+  geom_tile(aes(fill = pp)) +
+  geom_contour(aes(z = pp), color = "darkgrey") +
+  metR::geom_text_contour(aes(z = pp), stroke = 0.2)+
+  scale_fill_viridis_c(option = "mako", name = "Proportion mature\n ≥101mm")+
+  theme_bw()+
+  xlab("Large male abundance (t, t-1)")+
+  ylab("Exploitation rate (t, t-1)")+
+  theme(axis.text = element_text(size = 14),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 11),
+        axis.title = element_text(size = 14),
+        legend.direction = "horizontal",
+        legend.position = "bottom") -> int
+
+
+cbund/int +
+  plot_layout(heights = c(1, 2)) 
+
+ggsave("./Maturity research/Figures/expl_pmat101.png", width = 6, height = 7)
