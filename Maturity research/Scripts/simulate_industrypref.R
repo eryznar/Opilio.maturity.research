@@ -422,7 +422,7 @@ simulate_scenario <- function(expl_rate,
 ## RUN SCENARIOS FOR MULTIPLE RECRUITMENT WINDOWS --------------------------
 n_steps <- 50
 expl_vec <- seq(0, 0.8, by = 0.2)
-start_indices <- 1:length(unique(cohort$YEAR))  # e.g. 34
+start_indices <- 1:length(unique(cohort$YEAR))  # e.g. 32
 burn_in  <- 4
 
 n_size <- length(size_bins)
