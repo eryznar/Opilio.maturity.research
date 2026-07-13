@@ -798,7 +798,7 @@ mod <- gam(
 )
 
 
-saveRDS(mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_gam_k5.rda")
+saveRDS(mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_gam.rda")
 
 gam.check(mod)
 summary(mod)

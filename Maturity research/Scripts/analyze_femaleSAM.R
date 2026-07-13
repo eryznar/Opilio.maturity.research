@@ -35,28 +35,11 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
 
 # Calculate female SAM ----
 # Calculate weighted mean SAM for mature female
-fem.SAM <- spec.dat.sel$specimen %>% 
-  filter(SEX == 2, CLUTCH_SIZE>0) %>%
-  group_by(YEAR) %>%
-  reframe(SAM = weighted.mean(SIZE, weights = SAMPLING_FACTOR)) %>%
-  rbind(., data.frame(YEAR = 2020, SAM = NA))
-
-ggplot(fem.SAM, aes(YEAR, SAM))+
-  geom_point()+
-  geom_line() +
-  theme_bw()
-
-SAM.dat <- rbind(read.csv("./Maturity research/Data/SNOW_femaleSAM_k5.csv") %>%
-  dplyr::select(!X) %>%
-  filter(YEAR >=1989) %>%
-    mutate(type = "k=5"),
-  read.csv("./Maturity research/Data/SNOW_femaleSAM_k5.csv") %>%
-     dplyr::select(!X) %>%
-     filter(YEAR >=1989) %>%
-     mutate(type = "k=unrestricted"))
+SAM.dat <- read.csv("./Maturity research/Data/SNOW_femaleSAM.csv") %>%
+  filter(YEAR >=1989)
   
 
-ggplot(SAM.dat, aes(YEAR, SAM, color = type))+
+ggplot(SAM.dat, aes(YEAR, SAM))+
   geom_point()+
   geom_line() +
   theme_bw()+
@@ -80,7 +63,7 @@ fem.pmat <- spec.dat.sel$specimen %>%
   dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE, TOT_CRAB) %>%
   rename(PMAT_5565 = PROP_MATURE) 
 
-dat <- right_join(fem.pmat, SAM.dat) %>% filter(type == "k=5")
+dat <- right_join(fem.pmat, SAM.dat)
 
 ggplot(dat, aes(YEAR, PMAT_5565))+
   geom_point()+
@@ -107,8 +90,8 @@ bioabund.matfem.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, specie
   dplyr::select(YEAR, FEM_MAT_ABUND) 
 
 
-# instar 1 abundance (30-50mm) (Sainte Marie?)
-instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+# cohort abundance (30-50mm) =
+cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
                                     size_min = 35, size_max = 45,  sex = "female", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
@@ -116,7 +99,7 @@ instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
   dplyr::select(YEAR, FEM_COHORT_ABUND) 
 
 abund.dat <- right_join(bioabund.lg.sel, bioabund.matfem.sel) %>%
-  right_join(., instar1) 
+  right_join(., cohort) 
 unique(is.na(abund.dat))
 
 
@@ -133,7 +116,7 @@ ice <- read.csv(paste0("./Maturity research/Output/ebs_ice_means_1980-", current
   rename(YEAR = year, ICE = value)
 
 # Load temperature occupied data
-t_occ <- read.csv("./Maturity research/Data/BT_occupied_females_k5.csv") %>%
+t_occ <- read.csv("./Maturity research/Data/BT_occupied_females.csv") %>%
   rename(FEM_TOCC = temp_occ)
 
 # Bind all dataframes into df for modeling and plot
@@ -142,11 +125,11 @@ fem.model.dat <- right_join(SAM.df, ice) %>%
   right_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1))) %>%
   arrange(YEAR) %>%
   filter(YEAR >=1989) %>%
-  dplyr::select(!c(SPECIES, DISTRICT))
+  dplyr::select(!c(SPECIES, DISTRICT, X))
 
-write.csv(fem.model.dat, "./Maturity research/Output/SNOW_female_modeldata_k5.csv")
+write.csv(fem.model.dat, "./Maturity research/Output/SNOW_female_modeldata.csv")
 
-M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE, type)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
+M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
 corrplot::corrplot(M,
                    type = "upper",
                    method = "square",
@@ -154,7 +137,7 @@ corrplot::corrplot(M,
                    addCoef.col = "black") 
 
 femdat.long <- fem.model.dat %>%
-  dplyr::select(!c(PMAT_5565, MATURE, IMMATURE, TOT_CRAB, SAM, type)) %>%
+  dplyr::select(!c(PMAT_5565, MATURE, IMMATURE, TOT_CRAB, SAM)) %>%
   rename("Large male abundance (≥95mm)" = "MALE_LG_ABUND",
          "Mature female abundance" = "FEM_MAT_ABUND",
          "Female cohort abundance (35-45mm)" = "FEM_COHORT_ABUND",
@@ -197,7 +180,7 @@ fem.model.dat2 <- fem.model.dat %>%
   )
 
 cors <- fem.model.dat2 %>%
-  dplyr::select(!c(YEAR, SAM, PMAT_5565, TOT_CRAB, MATURE, IMMATURE, type)) %>%
+  dplyr::select(!c(YEAR, SAM, PMAT_5565, TOT_CRAB, MATURE, IMMATURE)) %>%
   mutate(
     MALE_LG_ABUND_lag1 = lag(MALE_LG_ABUND, 1),
     MALE_LG_ABUND_lag2 = lag(MALE_LG_ABUND, 2),
@@ -299,13 +282,6 @@ best_lags <- long_df %>%
   group_by(short_var) %>%
   slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
 
-
-worst.lags <- long_df %>%
-  filter(lag <= 0 & lag >=-2) %>%
-  group_by(short_var) %>%
-  slice_min(order_by = abs(cor), n = 1, with_ties = FALSE)
-
-
 # Add chosen lagged covariates (covariate precedes SAM) ----
 model.dat3 <- fem.model.dat2 %>%
   arrange(YEAR) %>%
@@ -368,28 +344,6 @@ model.dat3 <- fem.model.dat2 %>%
     #FEM_TOCC_lag1, FEM_TOCC_lag2, FEM_TOCC_avg2, FEM_TOCC_avg2lag1,
   )
 
-worst.lags <- fem.model.dat2 %>%
-  arrange(YEAR) %>%
-  mutate(
-    
-    FEM_COHORT_ABUND = FEM_COHORT_ABUND,
-    
-    FEM_MAT_ABUND_lag2 = lag(FEM_MAT_ABUND, 2),
-    
-    MALE_LG_ABUND_lag2 = lag(MALE_LG_ABUND, 2),
-    
-    ICE_avg2lag2  = lag(ICE_avg2, 2),
-    
-    FEM_TOCC_lag1 = lag(FEM_TOCC, 1),
-    
-    TOTAL_5565              = MATURE + IMMATURE
-  ) %>%
-  dplyr::select(
-    YEAR, SAM,
-    PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
-    
-    FEM_COHORT_ABUND, FEM_MAT_ABUND_lag2, MALE_LG_ABUND_lag2, ICE_avg2lag2, FEM_TOCC_lag1
-  )
 
 # CV -----
 k_folds <- 3   # kept only for interface compatibility
@@ -603,9 +557,6 @@ fits_ranked <- fits_AICc_cv %>%
   dplyr::select(!c(ok_resid, ok_acf, error, rmse_sd, keep_RMSE)) %>%
   arrange(cv_rmse, AICc)
 
-#write.csv(fits_ranked, "./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
-read.csv("./Maturity research/Output/SNOW_female_SAM_modelselection.csv")
-
 # fit model
 mod <- gamm(
   SAM ~ 
@@ -617,24 +568,9 @@ mod <- gamm(
   family      = gaussian(),
   method = "REML"
 )
-saveRDS(mod, "./Maturity research/Models/SNOW_femaleSAM_gamm_k5.rda")
-
-worst.mod <-gamm(
-  SAM ~ 
-    s(FEM_MAT_ABUND_lag2, k = 4)+
-    s(FEM_TOCC_lag1, k = 4),
-  correlation = corAR1(),
-  data        = worst.lags,
-  family      = gaussian(),
-  method = "REML"
-)
-
-saveRDS(worst.mod, "./Maturity research/Models/SNOW_femaleSAM_worstmod_k5.rda")
-
+saveRDS(mod, "./Maturity research/Models/SNOW_femaleSAM_gamm.rda")
 
 diagnose.gamm(mod)
-
-mod <- readRDS("./Maturity research/Models/SNOW_femaleSAM_gamm_k5.rda")
 
 # plot facetted smooths
 sm.dat <- smooth_estimates(mod) %>%
@@ -676,7 +612,7 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         plot.margin = margin(t = 5, r = 5, b = 8, l = 5, unit = "mm"))
 
 
-ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots_k5.png", width = 8, height = 4)
+ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots.png", width = 8, height = 4)
 
 # ------------------------------------------
 ## PMAT_5565
@@ -685,7 +621,7 @@ ggsave("./Maturity research/Figures/SNOW_female_SAM_effectplots_k5.png", width =
 response <- "PMAT_5565"
 
 dat_ccf <- fem.model.dat2
-vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "MATURE", "IMMATURE", "TOT_CRAB", "type")]
+vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "SAM", "PMAT_5565", "MATURE", "IMMATURE", "TOT_CRAB")]
 cc_df   <- data.frame()
 max_lag <- 3
 for (vv in vars) {
@@ -731,18 +667,12 @@ ggplot(long_df,
                      labels = seq(-max_lag, max_lag, 1)) +
   theme(panel.grid.minor.x = element_blank())
 
-#ggsave("./Maturity research/Figures/SNOW_female_pmat5565_ccf.png", width = 8, height = 7)
-
 # # select top |cor| for *negative* lags (covariate leads SAM)
 best_lags <- long_df %>%
   filter(lag <= 0 & lag >=-2) %>%
   group_by(short_var) %>%
   slice_max(order_by = abs(cor), n = 2, with_ties = FALSE)
 
-worst.lags <- long_df %>%
-  filter(lag <= 0 & lag >=-2) %>%
-  group_by(short_var) %>%
-  slice_min(order_by = abs(cor), n = 1, with_ties = FALSE)
 
 ## 2. Add chosen lagged covariates -------------------------------
 model.dat3 <- fem.model.dat2 %>%
@@ -804,27 +734,7 @@ model.dat3 <- fem.model.dat2 %>%
     #FEM_TOCC_avg2lag2
   )
 
-worst.lags <- fem.model.dat2 %>%
-  arrange(YEAR) %>%
-  mutate(
-    FEM_COHORT_ABUND_avg2 = FEM_COHORT_ABUND_avg2,
-    
-    FEM_MAT_ABUND  = FEM_MAT_ABUND,
-    
-    MALE_LG_ABUND  = MALE_LG_ABUND,
-    
-    ICE_lag2 = lag(ICE, 2),
-    
-    FEM_TOCC_lag2 = lag(FEM_TOCC, 2),
-    
-    TOTAL_5565              = MATURE + IMMATURE
-  ) %>%
-  dplyr::select(
-    YEAR, SAM,
-    PMAT_5565, MATURE, IMMATURE, TOTAL_5565,
-    
-    FEM_COHORT_ABUND_avg2, FEM_MAT_ABUND,  MALE_LG_ABUND,  ICE_lag2, FEM_TOCC_lag2
-  )
+
 
 ## ------------------------------------------------------------
 ## Time‑series CV for PMAT_5565 (binomial GAM)
@@ -1012,9 +922,6 @@ cv_rmse_flag <- function(fml, data, k_folds, gap, min_train) {
   }
 }
 
-
-
-
 fits_GCV_cv <- fits_GCV %>%
   mutate(
     cv_res = purrr::pmap(
@@ -1059,10 +966,8 @@ fits_ranked <- fits_GCV_cv %>%
   dplyr::select(!c(error, rmse_sd, keep_RMSE)) %>%
   dplyr::arrange(cv_rmse, GCV)
 
-#write.csv(fits_ranked, "./Maturity research/Output/snow_female_pmat5565_modelselection.csv")
-
 # Fit best model
-mod1 <- gam(
+mod <- gam(
   cbind(MATURE, IMMATURE) ~ 
     s(FEM_MAT_ABUND_avg2, k =4) +
     s(MALE_LG_ABUND_avg2lag1, k =4) + 
@@ -1073,37 +978,21 @@ mod1 <- gam(
   method = "REML"
 )
 
-gam.check(mod1)
-summary(mod1)
-acf(mod1$residuals)
+gam.check(mod)
+summary(mod)
+acf(mod$residuals)
 
-saveRDS(mod1, "./Maturity research/Models/SNOW_femalepmat5565_gam_k5.rda")
+saveRDS(mod, "./Maturity research/Models/SNOW_femalepmat5565_gam.rda")
 
-# Fit worst model
-worst.mod <- gam(
-  cbind(MATURE, IMMATURE) ~ 
-    s(FEM_MAT_ABUND, k =4)+
-    s(MALE_LG_ABUND, k =4) + 
-    s(ICE_lag2, k = 4)+
-    s(FEM_TOCC_lag2, k=4),
-  data   = worst.lags,
-  family = quasibinomial(link = "logit"),
-  method = "REML"
-)
-
-saveRDS(worst.mod, "./Maturity research/Models/SNOW_femalepmat5565_worstmod_k5.rda")
-
-
-mod1<- readRDS("./Maturity research/Models/SNOW_femalepmat5565_gam_k5.rda")
 # plot facetted smooths
-sm.dat <- smooth_estimates(mod1) %>%
+sm.dat <- smooth_estimates(mod) %>%
   pivot_longer(., cols = 6:ncol(.), names_to = "resp", values_to = "value") %>%
   filter(resp %in% c("MALE_LG_ABUND_avg2lag1", "FEM_TOCC_avg2"), is.na(value) == FALSE)
 
 
 dat_pr <- gratia::add_partial_residuals(
-  data  = mod1$model,
-  model = mod1
+  data  = mod$model,
+  model = mod
 )
 
 smooth_cols <- grep("^s\\(", names(dat_pr), value = TRUE)[c(2,4)]
@@ -1143,4 +1032,4 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         aspect.ratio = 3/4,
         plot.margin = margin(t = 5, r = 5, b = 8, l = 5, unit = "mm"))
 
-ggsave("./Maturity research/Figures/SNOW_female_pmat5565_effectplots_k5.png", width = 8, height = 4)
+ggsave("./Maturity research/Figures/SNOW_female_pmat5565_effectplots.png", width = 8, height = 4)

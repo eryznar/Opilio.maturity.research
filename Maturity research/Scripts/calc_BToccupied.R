@@ -36,10 +36,6 @@ spec.dat.sel$specimen <- spec.dat.sel$specimen %>%
          SAMPLING_FACTOR = SAMPLING_FACTOR/SEL)
 
 
-# spec.dat$specimen <- spec.dat.mat %>%
-#                       dplyr::select(!SAMPLING_FACTOR) %>%
-#                       dplyr::rename(SAMPLING_FACTOR = SAMPLING_FACTOR_MATURE) # I think I want all male temp occupied, not just mature
-
 stations <- read.csv("Y:/KOD_Survey/EBS Shelf/Data_Processing/Data/lookup_tables/station_lookup.csv")
 
 corners <- stations %>% 
@@ -54,9 +50,6 @@ cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW",
                                 size_min = 40, size_max = NULL,  sex = "male", 
                                 shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
 
-cpue.lg <- crabpack::calc_cpue(crab_data = spec.dat, species = "SNOW", 
-                               size_min = 95, size_max = NULL,  sex = "male",
-                               shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
 
 #Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
 temp_occ <- cpue%>%
@@ -74,10 +67,7 @@ temp_occ %>%
   geom_line() +
   theme_bw()
 
-
-
-
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied_k5.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
 
 ##########################################
 # FEMALES
@@ -103,7 +93,7 @@ temp_occ %>%
 
 
 
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied_females_k5.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied_females.csv")
 
 
 

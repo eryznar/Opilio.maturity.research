@@ -75,21 +75,8 @@ ggplot(ogives %>% filter(YEAR >= 1989), aes(SIZE_5MM, PROP_MATURE))+
   geom_rug(sides = "b")+
   geom_hline(yintercept = 0.5, linetype = "dashed")
 
-#ggsave("./Maturity research/Figures/SNOW_femaleogives.png", width = 8, height = 7)
+ggsave("./Maturity research/Figures/SNOW_femaleogives.png", width = 8, height = 7)
 
-# Plot
-ggplot(ogives %>% filter(YEAR >= 1989), aes(SIZE_5MM, PROP_MATURE, color = YEAR, group = YEAR))+
-  geom_line(linewidth = 0.75)+
-  #facet_wrap(~YEAR)+
-  theme_bw()+
-  ylab("Proportion mature")+
-  xlab("Carapace width (mm)")+
-  #geom_rug(sides = "b")+
-  geom_hline(yintercept = 0.5, linetype = "dashed", linewidth = 1)+
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_text(size = 16),
-        legend.text = element_text(size = 14),
-        legend.title = element_text(size = 12))
 
 
 # SAM ----
@@ -130,4 +117,4 @@ ggplot(SAM %>% filter(YEAR > 1988), aes(YEAR, SAM))+
   geom_line()+
   geom_point()
 
-write.csv(SAM, "./Maturity research/Data/SNOW_femaleSAM_k5.csv")
+write.csv(SAM, "./Maturity research/Data/SNOW_femaleSAM.csv")
