@@ -19,7 +19,7 @@ sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
   rename(SEL = selectivity, SIZE_5MM = size) %>%
   filter(year != "GAM predictions")
 
-s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
+s.gam <- gam(SEL ~ s(SIZE_5MM, k = 5), method = "REML", data = sel, family = Gamma(link = "log"))
 
 # Specimen data
 spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
@@ -77,7 +77,7 @@ temp_occ %>%
 
 
 
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied_k5.csv")
 
 ##########################################
 # FEMALES
@@ -103,7 +103,7 @@ temp_occ %>%
 
 
 
-write.csv(temp_occ, "./Maturity research/Data/BT_occupied_females.csv")
+write.csv(temp_occ, "./Maturity research/Data/BT_occupied_females_k5.csv")
 
 
 

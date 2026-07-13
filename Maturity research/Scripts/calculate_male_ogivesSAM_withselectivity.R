@@ -10,7 +10,7 @@ sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
   rename(SEL = selectivity, SIZE_5MM = size) %>%
   filter(year != "GAM predictions")
 
-s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
+s.gam <- gam(SEL ~ s(SIZE_5MM, k = 5), data = sel, family = Gamma(link = "log"))
 
 # filter specimen data by year and transform to sdmTMB coordinates
 readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
@@ -36,8 +36,8 @@ readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
 
 
 
-pmat.sim <- predict(model, sub1, type = "response", nsim = 300)
-pp <- readRDS("C:/Users/emily.ryznar/Work/Documents/Crab functional maturity/Chionoecetes.maturity.workflow/Maturity data processing/Doc/snow_matpop.rda")
+pmat.sim <- predict(model, sub1, type = "response")
+#pp <- readRDS("C:/Users/emily.ryznar/Work/Documents/Crab functional maturity/Chionoecetes.maturity.workflow/Maturity data processing/Doc/snow_matpop.rda")
 
 # Ogives ----
 ogives <- pmat.sim %>%
@@ -48,9 +48,11 @@ ogives <- pmat.sim %>%
     num   = sum(est * SAMPLING_FACTOR, na.rm = TRUE),
     PROP_MATURE = ifelse(denom > 0, num / denom, 0)) 
 
+k.inf <- read.csv("./Maturity research/Data/SNOW_maleogives_withselectivity.csv") %>% dplyr::select(!X)
+ogives2 <- rbind(k.inf %>% mutate(type = "k=unrestricted"), ogives %>% mutate(type = "k=5"))
 
 # Plot
-ggplot(ogives, aes(SIZE_5MM, PROP_MATURE))+
+ggplot(ogives2, aes(SIZE_5MM, PROP_MATURE, color = type))+
   geom_line(linewidth = 0.75)+
   facet_wrap(~YEAR)+
   theme_bw()+
@@ -60,8 +62,7 @@ ggplot(ogives, aes(SIZE_5MM, PROP_MATURE))+
   geom_hline(yintercept = 0.5, linetype = "dashed")
 
 ggsave("./Maturity research/Figures/SNOW_maleogives.png", width = 8, height = 7)
-write.csv(ogives, "./Maturity research/Data/SNOW_maleogives_withselectivity.csv")
-
+write.csv(ogives, "./Maturity research/Data/SNOW_maleogives_withselectivity_k5.csv")
 
 # Plot
 ggplot(pp$ogives %>% filter(SIZE_5MM >35, SIZE_5MM<140), aes(SIZE_5MM, PROP_MATURE_mean, color = YEAR, group = YEAR))+
@@ -130,8 +131,7 @@ ggplot(SAM, aes(YEAR, SAM))+
   geom_line()+
   geom_point()
 
-write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM2.csv")
-
+write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM_k5.csv")
 
 
 # pmat.sim is an nsim-column matrix

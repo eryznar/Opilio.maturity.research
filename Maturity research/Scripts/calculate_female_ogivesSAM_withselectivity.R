@@ -5,7 +5,7 @@ sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
   rename(SEL = selectivity, SIZE_5MM = size) %>%
   filter(year != "GAM predictions")
 
-s.gam <- gam(SEL ~ s(SIZE_5MM), data = sel, family = Gamma(link = "log"))
+s.gam <- gam(SEL ~ s(SIZE_5MM, k = 5), data = sel, family = Gamma(link = "log"))
 
 # filter specimen data by year and transform to sdmTMB coordinates
 readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
@@ -75,7 +75,7 @@ ggplot(ogives %>% filter(YEAR >= 1989), aes(SIZE_5MM, PROP_MATURE))+
   geom_rug(sides = "b")+
   geom_hline(yintercept = 0.5, linetype = "dashed")
 
-ggsave("./Maturity research/Figures/SNOW_femaleogives.png", width = 8, height = 7)
+#ggsave("./Maturity research/Figures/SNOW_femaleogives.png", width = 8, height = 7)
 
 # Plot
 ggplot(ogives %>% filter(YEAR >= 1989), aes(SIZE_5MM, PROP_MATURE, color = YEAR, group = YEAR))+
@@ -126,8 +126,8 @@ SAM <- ogives %>%
   )
 
 # plot
-ggplot(SAM, aes(YEAR, SAM))+
+ggplot(SAM %>% filter(YEAR > 1988), aes(YEAR, SAM))+
   geom_line()+
   geom_point()
 
-write.csv(SAM, "./Maturity research/Data/SNOW_femaleSAM.csv")
+write.csv(SAM, "./Maturity research/Data/SNOW_femaleSAM_k5.csv")
