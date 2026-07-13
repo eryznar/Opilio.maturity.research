@@ -553,21 +553,6 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
 ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots.png", width = 8, height = 4)
 
 
-# Fit worst SAM model ------
-worst.lags
-
-worst.mod <- gamm(
-  SAM ~ s(COHORT_ABUND_lag2, k = 4) +
-    s(LG_ABUND_lag2,    k = 4),
-  correlation = corAR1(),
-  data        = worst.lags,
-  family      = gaussian()
-)
-
-saveRDS(worst.mod, "./Maturity research/Models/SNOW_maleSAM_worstmod_k5.rda")
-
-
-
 # PROP_INDUSTRY PREFERRED ----
 mod <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
 spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
@@ -626,24 +611,13 @@ all.mat <-  crabpack::calc_bioabund(crab_data = mat.dat.sel, species = "SNOW",
 
 all.mat$PROP_INDPREF <- ind.pref$IND_PREF/all.mat$ALL_MAT
 
-all.mat %>% 
-  filter(YEAR >= 1989) %>%
-  full_join(., data.frame(YEAR = 2020)) -> all.mat2
-
-ggplot(all.mat2, aes(YEAR, PROP_INDPREF))+
-  geom_line()+
-  geom_point()+
-  theme_bw()
-
-#ggsave("./Maturity research/Figures/SNOW_male_propindpref.png", width = 9, height = 7)
-
 
 indpref.dat <- right_join(ind.pref, all.mat) %>%
   filter(YEAR >= 1989) %>%
   right_join(model.dat) %>%
   full_join(expand.grid(YEAR = 2020))
 
-write.csv(indpref.dat, "./Maturity research/Output/SNOW_male_modeldata_k5.csv")
+write.csv(indpref.dat, "./Maturity research/Output/SNOW_male_modeldata.csv")
 
 
 M <- cor(indpref.dat %>% dplyr::select(!c(SAM, YEAR, IND_PREF, ALL_MAT, PROP_INDPREF)), use = "pairwise.complete.obs", method = "pearson")
@@ -678,75 +652,6 @@ corrplot::corrplot(M,
                    method = "square",
                    order  = "hclust",      # cluster variables
                    addCoef.col = "black") 
-
-
-## ------------------------------------------------------------
-## 3) CCF diagnostics
-## ------------------------------------------------------------
-dat_ccf <- model.dat2
-vars    <- names(dat_ccf)[!names(dat_ccf) %in% c("YEAR", "PROP_INDPREF", "ALL_MAT", "IND_PREF")]
-cc_df   <- data.frame()
-
-for (vv in vars) {
-  pp <- dat_ccf[[vv]]
-  
-  ok <- complete.cases(dat_ccf$PROP_INDPREF, pp)
-  if (sum(ok) < 2) next   # only need enough paired data for CCF
-  
-  pind_ok <- dat_ccf$PROP_INDPREF[ok]
-  pp_ok  <- pp[ok]
-  
-  # CCF on original (non pre-whitened) series: covariate first, response second
-  cc <- ccf(pp_ok, pind_ok, lag.max = max_lag, plot = FALSE)
-  
-  df <- data.frame(
-    var = vv,
-    lag = as.numeric(cc$lag),
-    cor = as.numeric(cc$acf)
-  )
-  
-  cc_df <- rbind(cc_df, df)
-}
-
-# Tag running‑mean variants
-long_df <- cc_df %>%
-  mutate(
-    smooth = case_when(
-      grepl("avg2", var, ignore.case = TRUE) ~ "2-year",
-      grepl("avg3", var, ignore.case = TRUE) ~ "3-year",
-      TRUE                                   ~ "none"
-    ),
-    short_var = case_when(
-      grepl("avg2", var, ignore.case = TRUE) ~ gsub("_avg2", "", var, ignore.case = TRUE),
-      grepl("avg3", var, ignore.case = TRUE) ~ gsub("_avg3", "", var, ignore.case = TRUE),
-      TRUE                                   ~ var
-    )
-  )
-
-# Plot
-ggplot(long_df,
-       aes(lag, cor, fill = factor(smooth, levels = c("none", "2-year", "3-year")))) +
-  geom_bar(stat = "identity", position = "dodge") +
-  scale_fill_manual(values = c("cadetblue", "salmon", "darkgoldenrod"), name = "smooth") +
-  facet_wrap(~ short_var) +
-  theme_bw() +
-  scale_x_continuous(breaks = seq(-max_lag, max_lag, 1),
-                     labels = seq(-max_lag, max_lag, 1)) +
-  theme(panel.grid.minor.x = element_blank())
-
-#ggsave("./Maturity research/Figures/SNOW_male_indpref_ccf.png", width = 8, height = 7)
-
-long_df %>%
-  group_by(short_var) %>%
-  filter(lag <=0, !(lag == -3 & smooth == "2-year")) %>%
-  mutate(abs_cor = abs(cor)) %>%
-  slice_max(order_by = abs_cor, n = 2, with_ties = FALSE)
-
-long_df %>%
-  group_by(short_var) %>%
-  filter(lag <=0, !(lag == -3 & smooth == "2-year")) %>%
-  mutate(abs_cor = abs(cor)) %>%
-  slice_min(order_by = abs_cor, n = 1, with_ties = FALSE)
 
 ## ------------------------------------------------------------
 ## 4) Add chosen lagged covariates 
@@ -796,31 +701,6 @@ model.dat3 <- model.dat2 %>%
     #TOCC_lag1, TOCC_lag2, TOCC_avg2lag2
   )
 
-
-worst.lags <-  model.dat2 %>%
-  arrange(YEAR) %>%
-  mutate(
-    #SAM = log(SAM),
-    
-    COHORT_ABUND_avg2lag2 = lag(COHORT_ABUND_avg2, 2), # hard coding to lag0, no avg
-    
-    LG_ABUND_avg2lag2  = lag(LG_ABUND_avg2, 2),
-
-    
-    ICE_avg2lag2  = lag(ICE_avg2, 2),
-    
-    TOCC_avg2lag2 = lag(TOCC_avg2, 2)
-    
-  ) %>%
-  dplyr::select(
-    YEAR, PROP_INDPREF, ALL_MAT, IND_PREF,
-    
-    COHORT_ABUND_avg2lag2,
-    
-    LG_ABUND_avg2lag2,
-
-    ICE_avg2lag2,
-    TOCC_avg2lag2)
 
 
 # EXPLOITATION GAM ----
@@ -905,7 +785,6 @@ df.exp <- df.dat %>%
 
 df.dat <- full_join(model.dat3, df.exp)
 
-df.dat.worstlags <- full_join(worst.lags, df.exp)
 
 
 # fit model 
@@ -918,27 +797,8 @@ mod <- gam(
   method = "REML"
 )
 
-mod2 <- gam(
-  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
-    s(COHORT_ABUND, k = 4)+
-    s(LG_ABUND_avg2, k = 4),
-  data   = df.dat,
-  family = quasibinomial(link = "logit"),
-  method = "REML"
-)
 
 saveRDS(mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_gam_k5.rda")
-
-worst.mod <- gam(
-  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
-    s(COHORT_ABUND_avg2lag2, k = 4)+
-    s(LG_ABUND_avg2lag2, EXP_RATE_avg2lag2, k = 10),
-  data   = df.dat.worstlags,
-  family = quasibinomial(link = "logit"),
-  method = "REML"
-)
-
-saveRDS(worst.mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_worstmod_k5.rda")
 
 gam.check(mod)
 summary(mod)
@@ -1027,7 +887,7 @@ ggplot(preds, aes(x = LG_ABUND_avg2, y = EXP_RATE_avg2)) +
 
 cbund/int 
 
-ggsave("./Maturity research/Figures/expl_pmat101_k5.png", width = 6, height = 8)
+ggsave("./Maturity research/Figures/expl_pmat101.png", width = 6, height = 8)
 
 
 
