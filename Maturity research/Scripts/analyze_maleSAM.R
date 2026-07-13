@@ -94,7 +94,7 @@ model.dat <- right_join(SAM.abund, ice) %>%
   right_join(., t_occ) %>%
   right_join(., data.frame(YEAR = seq(min(.$YEAR), max(.$YEAR), by = 1))) %>%
   arrange(YEAR) %>%
-  dplyr::select(!c(X.1,X, SPECIES, DISTRICT))
+  dplyr::select(!c(X, SPECIES, DISTRICT))
 
 
 
@@ -492,16 +492,6 @@ fits_ranked
 # fit model
 mod <- gamm(
   SAM ~ s(COHORT_ABUND, k = 4) +
-    s(LG_ABUND_avg2,    k = 4)+
-  #s(ICE_avg2lag1, k = 4),
-  s(TOCC, k = 4),
-  correlation = corAR1(),
-  data        = model.dat3,
-  family      = gaussian()
-)
-
-mod2 <- gamm(
-  SAM ~ s(COHORT_ABUND, k = 4) +
     s(LG_ABUND_avg2,    k = 4),
     #s(ICE_avg2lag1, k = 4),
     #s(TOCC, k = 4),
@@ -510,19 +500,17 @@ mod2 <- gamm(
   family      = gaussian()
 )
 
-saveRDS(mod2, "./Maturity research/Models/SNOW_maleSAM_gamm_k5.rda")
+saveRDS(mod, "./Maturity research/Models/SNOW_maleSAM_gamm.rda")
 
 diagnose.gamm(mod)
-diagnose.gamm(mod2)
 
-mod2 <- readRDS("./Maturity research/Models/SNOW_maleSAM_gamm_k5.rda")
 # plot facetted smooths
-sm.dat <- smooth_estimates(mod2) %>%
+sm.dat <- smooth_estimates(mod) %>%
   pivot_longer(., cols = 6:ncol(.), names_to = "resp", values_to = "value") 
 
 dat_pr <- gratia::add_partial_residuals(
-  data  = mod2$gam$model,
-  model = mod2$gam
+  data  = mod$gam$model,
+  model = mod$gam
 )
 
 smooth_cols <- grep("^s\\(", names(dat_pr), value = TRUE)
@@ -562,7 +550,7 @@ ggplot(sm.dat, aes(x = value, y = .estimate)) +
         plot.margin = margin(t = 5, r = 5, b = 8, l = 5, unit = "mm"))
 
 
-ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots_k5.png", width = 8, height = 4)
+ggsave("./Maturity research/Figures/SNOW_male_SAM_effectplots.png", width = 8, height = 4)
 
 
 # Fit worst SAM model ------
