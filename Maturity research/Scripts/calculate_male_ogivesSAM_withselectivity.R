@@ -48,50 +48,8 @@ ogives <- pmat.sim %>%
     num   = sum(est * SAMPLING_FACTOR, na.rm = TRUE),
     PROP_MATURE = ifelse(denom > 0, num / denom, 0)) 
 
-k.inf <- read.csv("./Maturity research/Data/SNOW_maleogives_withselectivity.csv") %>% dplyr::select(!X)
-ogives2 <- rbind(k.inf %>% mutate(type = "k=unrestricted"), ogives %>% mutate(type = "k=5"))
+write.csv(ogives, "./Maturity research/Data/SNOW_maleogives_withselectivity.csv")
 
-# Plot
-ggplot(ogives2, aes(SIZE_5MM, PROP_MATURE, color = type))+
-  geom_line(linewidth = 0.75)+
-  facet_wrap(~YEAR)+
-  theme_bw()+
-  ylab("Proportion mature")+
-  xlab("Carapace width (mm)")+
-  geom_rug(sides = "b")+
-  geom_hline(yintercept = 0.5, linetype = "dashed")
-
-ggsave("./Maturity research/Figures/SNOW_maleogives.png", width = 8, height = 7)
-write.csv(ogives, "./Maturity research/Data/SNOW_maleogives_withselectivity_k5.csv")
-
-# Plot
-ggplot(pp$ogives %>% filter(SIZE_5MM >35, SIZE_5MM<140), aes(SIZE_5MM, PROP_MATURE_mean, color = YEAR, group = YEAR))+
-  geom_line(linewidth = 1, alpha = 0.5)+
-  #facet_wrap(~YEAR)+
-  theme_bw()+
-  ylab("Proportion mature")+
-  xlab("Carapace width (mm)")+
-  #geom_rug(sides = "b")+
-  geom_hline(yintercept = 0.5, linetype = "dashed", linewidth = 1)+
-  geom_vline(xintercept = 77.5, linetype = "dashed", linewidth = 1)+
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_text(size = 16),
-        legend.text = element_text(size = 14),
-        legend.title = element_text(size = 12))
-
-# Plot
-ggplot(ogives %>% filter(SIZE_5MM >35, SIZE_5MM<140), aes(SIZE_5MM, PROP_MATURE, color = YEAR, group = YEAR))+
-  geom_line(linewidth = 1, alpha = 0.5)+
-  #facet_wrap(~YEAR)+
-  theme_bw()+
-  ylab("Proportion mature")+
-  xlab("Carapace width (mm)")+
-  #geom_rug(sides = "b")+
-  geom_hline(yintercept = 0.5, linetype = "dashed", linewidth = 1)+
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_text(size = 16),
-        legend.text = element_text(size = 14),
-        legend.title = element_text(size = 12))
 
 # SAM ----
 # function
@@ -131,60 +89,5 @@ ggplot(SAM, aes(YEAR, SAM))+
   geom_line()+
   geom_point()
 
-write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM_k5.csv")
+write.csv(SAM, "./Maturity research/Data/SNOW_maleSAM.csv")
 
-
-# pmat.sim is an nsim-column matrix
-nsim <- ncol(pmat.sim)
-
-# Attach simulations to sub1 as columns sim_1, sim_2, ..., sim_nsim
-sub_sim <- sub1 %>%
-  bind_cols(
-    as.data.frame(pmat.sim) %>%
-      setNames(paste0("sim_", seq_len(nsim)))
-  )
-
-# Long format: one row per crab × simulation
-sub_long <- sub_sim %>%
-  pivot_longer(
-    cols = starts_with("sim_"),
-    names_to = "sim_id",
-    values_to = "est"
-  )
-
-# Ogives for each simulation
-ogive_sims <- sub_long %>%
-  filter(!(YEAR == 2025 & SIZE_5MM == 172.5)) %>%
-  group_by(sim_id, YEAR, SPECIES, DISTRICT, SIZE_5MM) %>%
-  summarise(
-    denom = sum(SAMPLING_FACTOR, na.rm = TRUE),
-    num   = sum(est * SAMPLING_FACTOR, na.rm = TRUE),
-    PROP_MATURE = ifelse(denom > 0, num / denom, NA_real_),
-    .groups = "drop"
-  )
-
-# Summarise across simulations: mean ogive and uncertainty
-ogives_summary <- ogive_sims %>%
-  group_by(YEAR, SPECIES, DISTRICT, SIZE_5MM) %>%
-  summarise(
-    PROP_MATURE_mean = mean(PROP_MATURE, na.rm = TRUE),
-    PROP_MATURE_sd   = sd(PROP_MATURE,   na.rm = TRUE),
-    PROP_MATURE_lo   = pmax(0, PROP_MATURE_mean - 1.96 * PROP_MATURE_sd),
-    PROP_MATURE_hi   = pmin(1, PROP_MATURE_mean + 1.96 * PROP_MATURE_sd),
-    .groups = "drop"
-  )
-
-
-# Plot
-ggplot(ogives_summary %>% filter(SIZE_5MM >35, SIZE_5MM<140), aes(SIZE_5MM, PROP_MATURE_mean, color = YEAR, group = YEAR))+
-  geom_line(linewidth = 1, alpha = 0.5)+
-  #facet_wrap(~YEAR)+
-  theme_bw()+
-  ylab("Proportion mature")+
-  xlab("Carapace width (mm)")+
-  #geom_rug(sides = "b")+
-  geom_hline(yintercept = 0.5, linetype = "dashed", linewidth = 1)+
-  theme(axis.text = element_text(size = 16),
-        axis.title = element_text(size = 16),
-        legend.text = element_text(size = 14),
-        legend.title = element_text(size = 12))

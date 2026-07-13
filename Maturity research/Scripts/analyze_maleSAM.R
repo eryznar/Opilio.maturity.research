@@ -15,7 +15,7 @@ source("./Maturity research/Scripts/load_libs_params.R")
 mod <- readRDS("./Maturity research/Models/snowmale_sdmTMB_spVAR_noBIN_k300.rda")
 
 # SAM
-SAM.dat <- read.csv("./Maturity research/Data/SNOW_maleSAM_k5.csv") %>%
+SAM.dat <- read.csv("./Maturity research/Data/SNOW_maleSAM.csv") %>%
   dplyr::select(!X) %>%
   full_join(., expand.grid(YEAR = 2020))
 
@@ -61,8 +61,8 @@ bioabund.lg.sel <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = 
   dplyr::select(YEAR, LG_ABUND) %>%
   filter(YEAR >=1989)
 
-# instar 1 abundance (40-60mm) (Sainte Marie?)
-instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
+# Cohort size (40-60mm)
+cohort <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW", 
                                     size_min = 40, size_max = 60,  sex = "male", 
                                     shell_condition = c("new_hardshell")) %>%
   group_by(YEAR) %>%
@@ -70,7 +70,7 @@ instar1 <-  crabpack::calc_bioabund(crab_data = spec.dat.sel, species = "SNOW",
   dplyr::select(YEAR, COHORT_ABUND)  %>%
   filter(YEAR >= 1989)
 
-abund.dat <- right_join(bioabund.lg.sel, instar1)
+abund.dat <- right_join(bioabund.lg.sel, cohort)
 unique(is.na(abund.dat))
 
 
@@ -82,14 +82,11 @@ unique(SAM.abund[is.na(SAM.abund$SAM) == TRUE,]$YEAR) #2008, 2012, 2014, 2016
 
 # Load Jan-April ice data
 ice <- read.csv(paste0("./Maturity research/Output/ebs_ice_means_1980-", current.year, ".csv")) %>%
-  #filter(name == "Mar-Apr ice") %>%
-  # group_by(year) %>%
-  # reframe(value = mean(value)) %>%
   dplyr::select(year, value) %>%
   rename(YEAR = year, ICE = value)
 
 # Load temperature occupied data
-t_occ <- read.csv("./Maturity research/Data/BT_occupied_k5.csv") %>%
+t_occ <- read.csv("./Maturity research/Data/BT_occupied.csv") %>%
   rename(TOCC = temp_occ)
 
 # Bind all dataframes into df for modeling and plot
