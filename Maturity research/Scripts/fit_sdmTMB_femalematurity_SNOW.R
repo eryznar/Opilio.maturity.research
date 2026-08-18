@@ -13,6 +13,8 @@ source("./Maturity research/Scripts/load_libs_params.R")
 # LOAD DATA AND PROCESS ----------------------------------------------------------------------------------
 spec.dat <- readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")
 
+spec.dat <- crabpack::get_specimen_data(species = "SNOW", region = "EBS", channel = "API")
+
 
 mod.dat <- spec.dat$specimen %>% 
               filter(SEX == 2, SHELL_CONDITION == 2) %>%
@@ -317,4 +319,4 @@ model <- readRDS("./Maturity research/Models/snowfemale_sdmTMB_spVAR_k300.rda")
 
 model_name <- "snowfem_spVAR_k300"
 
-plot.resids(model, model_name) -> out
+plot.resids(mod.300spvar, model_name) -> out

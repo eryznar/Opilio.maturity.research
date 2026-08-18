@@ -25,8 +25,8 @@ readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
   as.data.frame(.) %>%
   mutate(LATITUDE = Y/1000, # scale to km so values don't get too large
          LONGITUDE = X/1000) %>%
-  mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
-         SAMPLING_FACTOR = SAMPLING_FACTOR/SEL) %>%
+  # mutate(SEL = predict(s.gam, newdata= ., type = "response"), # predict size-specific selectivity
+  #        SAMPLING_FACTOR = SAMPLING_FACTOR/SEL) %>%
   filter(YEAR %in% model$data$YEAR) -> sub1
 
 mat <- sub1 %>% 
