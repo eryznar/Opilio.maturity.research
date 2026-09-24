@@ -1,1 +1,1 @@
-Data, code, and figures to support the manuscript "Changing size at maturity in Bering Sea snow crab: the role of mate availability and competition" by
+Data, code, and figures to evaluate changing size at maturity for snow crab in the eastern Bering Sea. 
