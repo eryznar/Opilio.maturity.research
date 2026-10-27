@@ -134,18 +134,29 @@ cors <- model.dat2 %>%
          TOCC_avg2lag1 = lag(TOCC_avg2, 1))
 
 M <- cor(cors, use = "pairwise.complete.obs", method = "pearson")
+
+png(
+  filename = "./Maturity research/Figures/male_correlations.png",
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+
 corrplot::corrplot(
   M,
   type      = "upper",
   method    = "color",      # or "square"
   order     = "alphabet",
   tl.col    = "black",      # label color
-  tl.cex    = 0.6,          # label size
+  tl.cex    = 0.9,          # label size
   tl.srt    = 45,           # label rotation
   addCoef.col = NA,         # no numbers on the plot
-  number.cex  = 0.4,        # (used if you keep numbers)
+  number.cex  = 0.7,       
   mar = c(0,0,1,0)          # smaller margins
 )
+
+dev.off()
 
 ## ------------------------------------------------------------
 ## 3) CCF diagnostics: which covariates lead SAM?
@@ -797,6 +808,16 @@ mod <- gam(
   method = "REML"
 )
 
+mod.yr <- gam(
+  cbind(IND_PREF, ALL_MAT - IND_PREF) ~ 
+    s(COHORT_ABUND, k = 4)+
+    s(LG_ABUND_avg2, EXP_RATE_avg2, k = 10) +
+    s(YEAR, k = 4),
+  data   = df.dat,
+  family = quasibinomial(link = "logit"),
+  method = "REML"
+)
+
 
 saveRDS(mod, "./Maturity research/Models/SNOW_malepmat101_exploitation_gam.rda")
 
@@ -804,6 +825,43 @@ gam.check(mod)
 summary(mod)
 acf(na.omit(mod$residuals))
 
+#compute acf without plotting
+acf_obj <- acf(na.omit(mod.yr$residuals), plot = TRUE)
+acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
+
+# CI like base acf (white-noise assumption)
+n   <- acf_obj$n.used
+ci  <- qnorm((1 + 0.95)/2) / sqrt(n)
+
+p_acf_yr <- ggplot(acf_df, aes(x = lag, y = acf)) +
+  geom_hline(yintercept = 0, colour = "black") +
+  geom_hline(yintercept = ci,  colour = "blue", linetype = "dashed") +
+  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
+  geom_segment(aes(xend = lag, y = 0, yend = acf)) +  # vertical bars
+  labs(title = "Model with year",
+       x = "Lag", y = "ACF") +
+  theme_bw()
+
+#compute acf without plotting
+acf_obj <- acf(na.omit(mod$residuals), plot = TRUE)
+acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
+
+# CI like base acf (white-noise assumption)
+n   <- acf_obj$n.used
+ci  <- qnorm((1 + 0.95)/2) / sqrt(n)
+
+p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
+  geom_hline(yintercept = 0, colour = "black") +
+  geom_hline(yintercept = ci,  colour = "blue", linetype = "dashed") +
+  geom_hline(yintercept = -ci, colour = "blue", linetype = "dashed") +
+  geom_segment(aes(xend = lag, y = 0, yend = acf)) +  # vertical bars
+  labs(title = "Model without year",
+       x = "Lag", y = "ACF") +
+  theme_bw()
+
+p_acf/p_acf_yr
+
+ggsave("./Maturity research/Figures/pmat101_acf_modelcomparision.png", width = 8, height = 7)
 
 # smooth on a grid (as you already had)
 sm.dat <- smooth_estimates(mod) %>%
