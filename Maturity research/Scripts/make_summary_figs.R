@@ -1,7 +1,12 @@
+# PURPOSE: To generate summary figures for manuscript
+
+# Author: Emily Ryznar
+
 # LOAD LIBS/PARAMS ---------------------------------------------------------------------------------------
 source("./Maturity research/Scripts/load_libs_params.R")
 
-# SAM ----
+# SAM and PMAT plots ----
+# SAM
 SAM.dat <- rbind(read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>%
                    dplyr::select(YEAR, SAM) %>%
                    mutate(sex = "Male"),
@@ -51,7 +56,7 @@ ggplot(SAM.dat, aes(YEAR, SAM)) +
 #ggsave("./Maturity research/Figures/SNOW_SAM_timeseries.png", width = 8, height = 7)
 
 
-# TARGET_SIZES ----
+# TARGET_SIZES 
 f.prop.dat <- read.csv("./Maturity research/Output/SNOW_female_modeldata.csv") %>%
                    dplyr::select(YEAR, PMAT_5565, MATURE, IMMATURE) %>%
                    rename(value = PMAT_5565) %>% 
@@ -107,7 +112,7 @@ ggplot(prop.dat, aes(YEAR, value)) +
 
 #ggsave("./Maturity research/Figures/SNOW_PMAT_timeseries.png", width = 8, height = 7)        
 
-# Join SAM and pmat plots ----
+# Join SAM and pmat plots
 (SAM.plot +plot_annotation(tag_levels = "A"))/(pmat.plot +
   plot_annotation(tag_levels = "A")) &
   theme(plot.tag = element_text(size = 17, face = "bold"),
