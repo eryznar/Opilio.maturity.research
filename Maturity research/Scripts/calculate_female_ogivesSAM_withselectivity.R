@@ -1,4 +1,5 @@
 model <- readRDS("./Maturity research/Models/snowfemale_sdmTMB_spVAR_k300.rda")
+spec.dat <- crabpack::get_specimen_data(species = "SNOW", region = "EBS", channel = "KOD")
 
 # Selectivity
 sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
@@ -8,7 +9,7 @@ sel <- read.csv("./Maturity research/Data/bsfrf_sel_dat.csv") %>%
 s.gam <- gam(SEL ~ s(SIZE_5MM, k = 5), data = sel, family = Gamma(link = "log"))
 
 # filter specimen data by year and transform to sdmTMB coordinates
-readRDS("./Maturity research/Data/snow_survey_specimenEBS.rda")$specimen %>%
+spec.dat$specimen %>%
   filter(SHELL_CONDITION == 2, SEX == 2) %>%
   mutate(BIN_5MM = cut_width(SIZE_1MM, width = 5, center = 2.5, closed = "left", dig.lab = 4),
          BIN2 = BIN_5MM) %>%
