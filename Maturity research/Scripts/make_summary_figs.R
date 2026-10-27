@@ -52,31 +52,31 @@ ggplot(SAM.dat, aes(YEAR, SAM)) +
 
 
 # TARGET_SIZES ----
-prop.dat <- rbind(read.csv("./Maturity research/Output/SNOW_female_modeldata_k5.csv") %>%
-                   dplyr::select(YEAR, PMAT_5565) %>%
+f.prop.dat <- read.csv("./Maturity research/Output/SNOW_female_modeldata.csv") %>%
+                   dplyr::select(YEAR, PMAT_5565, MATURE, IMMATURE) %>%
                    rename(value = PMAT_5565) %>% 
-                   mutate(cat = "Mature females 55-65mm"),
-                 read.csv("./Maturity research/Output/SNOW_male_modeldata_k5.csv") %>%
-                   dplyr::select(YEAR, PROP_INDPREF) %>%
+                   mutate(cat = "Mature females 55-65 mm")
+m.prop.dat <- read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>%
+                   dplyr::select(YEAR, IND_PREF, ALL_MAT, PROP_INDPREF) %>%
                    rename(value = PROP_INDPREF) %>%
-                   mutate(cat = "Males maturing ≥101mm")) %>%
+                   mutate(cat = "Males maturing ≥101 mm") %>%
   full_join(., expand.grid(YEAR = 1989:2025, 
                            cat= unique(.$cat)))
 
 
 
-m.dat <- prop.dat %>% filter(cat == "Males maturing ≥101mm")
+m.dat <- m.prop.dat %>% filter(cat == "Males maturing ≥101 mm")
 summary(lme(value ~ YEAR, data = na.omit(m.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 r.squaredGLMM(lme(value ~ YEAR, data = na.omit(m.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 
 
-f.dat <- prop.dat %>% filter(cat =="Mature females 55-65mm")
+f.dat <- f.prop.dat %>% filter(cat =="Mature females 55-65 mm")
 summary(lme(value ~ YEAR, data = na.omit(f.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 r.squaredGLMM(lme(value ~ YEAR, data = na.omit(f.dat), random = ~ 1 | YEAR, correlation = corAR1()))
 
 
 ann_df <- data.frame(
-  cat  = c("Males maturing ≥101mm", "Mature females 55-65mm"),
+  cat  = c("Males maturing ≥101 mm", "Mature females 55-65 mm"),
   x    = c(2015, 2011),  
   y    = c(0.3, 0.5),
   lab = c(
@@ -85,6 +85,7 @@ ann_df <- data.frame(
   )
 )
 
+prop.dat <- bind_rows(m.prop.dat, f.prop.dat)
 
 ggplot(prop.dat, aes(YEAR, value)) +
   geom_line() +
@@ -92,7 +93,7 @@ ggplot(prop.dat, aes(YEAR, value)) +
   ylab("Proportion")+
   xlab("Year")+
   geom_smooth(method = "lm", fill = "cadetblue", color = "cadetblue", alpha = 0.2) +
-  facet_wrap(~ factor(cat, levels = c("Males maturing ≥101mm", "Mature females 55-65mm")),
+  facet_wrap(~ factor(cat, levels = c("Males maturing ≥101 mm", "Mature females 55-65 mm")),
              scales = "free_y", nrow = 1) +
   geom_text(data = ann_df,
             aes(x = x, y = y, label = lab),
@@ -118,23 +119,15 @@ ggsave("./Maturity research/Figures/SNOW_PMAT&SAM_timeseries.png", width = 8, he
 # MALE SAM BEST MODEL DIAGNOSTICS AND EFFECT PLOTS----
 mod <- readRDS("./Maturity research/Models/SNOW_maleSAM_gamm.rda")
 
-mod2  <- mod$gam          # the GAM component
-null_dev <- mod2$null.deviance
-res_dev  <- mod2$deviance
-
-dev_expl <- (null_dev - res_dev) / null_dev * 100
-dev_expl
-
-concurvity(mod$gam)
 
 resid_df <- data.frame(
-  resid   = residuals(mod$gam),                 # GAM residuals
-  fitted  = fitted(mod$gam),                    # GAM fitted values
-  linpred = predict(mod$gam, type = "link")     # linear predictor
+  resid   = residuals(mod),                 # GAM residuals
+  fitted  = fitted(mod),                    # GAM fitted values
+  linpred = predict(mod, type = "link")     # linear predictor
 )
 
 # compute acf without plotting
-acf_obj <- acf(resid_df$resid, plot = FALSE)
+acf_obj <- acf(na.omit(mod$residuals), plot = TRUE)
 acf_df  <- with(acf_obj, data.frame(lag = lag, acf = acf))
 
 # CI like base acf (white-noise assumption)
@@ -167,7 +160,7 @@ p_resid_lin <- ggplot(resid_df, aes(x = linpred, y = resid)) +
 
 # Histogram of residuals
 p_hist <- ggplot(resid_df, aes(x = resid)) +
-  geom_histogram(breaks = seq(-15, 15, by = 5), colour = "black", fill = "grey80") +
+  geom_histogram(binwidth = 3, colour = "black", fill = "grey80") +
   labs(title = "Histogram of residuals",
        x = "Residuals", y = "Count") +
   theme_bw()
@@ -331,7 +324,7 @@ p_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
 p_qq <- ggplot(resid_df, aes(sample = resid)) +
   stat_qq() +
   stat_qq_line(colour = "red") +
-  labs(title = "Normal Q-Q") +
+  labs(title = "Q-Q") +
   theme_bw()
 
 # Residuals vs linear predictor
@@ -488,6 +481,12 @@ ggplot(df.exp, aes(YEAR, EXP_RATE))+
   #geom_smooth(method = "lm")+
   ylab("Exploitation rate")+
   xlab("Year")+
+  annotate(
+    "rect",
+    xmin = 2022, xmax = 2023,
+    ymin = -Inf, ymax = Inf,
+    fill = "grey60", alpha = 0.25
+  )+
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 12),
         strip.text = element_text(size = 12)) -> exp.rate
@@ -507,6 +506,12 @@ ggplot(ice, aes(YEAR, ICE))+
   theme_bw()+
   xlab("Year")+
   ylab("Ice area fraction")+
+  annotate(
+    "rect",
+    xmin = 2018, xmax = 2019,
+    ymin = -Inf, ymax = Inf,
+    fill = "red", alpha = 0.25
+  )+
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 12),
         strip.text = element_text(size = 12)) -> ice.plot
@@ -570,7 +575,7 @@ ggplot(plot.dat, aes(YEAR, ABUND)) +
   # scale_color_manual(values = c("#26185F", "#0095AF"), name = "") +
   xlab("Year") +
   ylab("Abundance (millions)") +
-  facet_wrap(~cat, nrow = 1, scales = "free_y")+
+  facet_wrap(~cat, nrow = 2, scales = "free_y")+
   theme(
     legend.position      = c(0.3, 0.99),
     legend.justification = c("left", "top"),
@@ -661,19 +666,59 @@ ggplot(plot.dat, aes(YEAR, ABUND_SCALED, color = cat))+
 #study site, ice time series, and exploitation rate time series. Then one panel plotting male abundance 
 # (pre-maturity / 40-60mm, >95, and >101) - all of these scaled so highest abundance year = 1. 
 # Then one panel for female abundance (35-45 mm and mature) also scaled to 1.  
-(male.plot/female.plot + plot_layout(axis_titles = "collect", axes = "collect_x"))
-ptop <- (study_site + ice.plot + exp.rate)+  
-        theme(plot.margin = unit(c(0, 0.2, 0.2, 0.2), "lines"),
-              plot.tag.position = c(0.25, 0.98),   # x, y in [0,1]
-              plot.tag = element_text(face = "bold", size = 11))
-                       
+# Left column: A, B, C
+# Left: three equally sized panels
+# Left column: three equal-height plots
+#study site, ice time series, and exploitation rate time series. Then one panel plotting male abundance 
+# (pre-maturity / 40-60mm, >95, and >101) - all of these scaled so highest abundance year = 1. 
+# Then one panel for female abundance (35-45 mm and mature) also scaled to 1.  
+text_size <- 11
 
-pbottom <- male.plot + plot_layout(axis_titles = "collect", axes = "collect_x", heights = c(1.4)) +
-  theme(plot.margin = unit(c(0, 0.3, 0.3, 0.3), "lines"),
-        plot.tag.position = c(0.25, 0.98),   # x, y in [0,1]
-        plot.tag = element_text(face = "bold", size = 11))
+# Bottom two left panels: shared year axis
+left_timeseries <- (
+  ice.plot /
+    exp.rate
+) +
+  plot_layout(
+    heights = c(1, 1),
+    axes = "collect_x",
+    axis_titles = "collect_x"
+  )
 
-ptop/pbottom + plot_layout(heights = c(1, 1.5)) 
+# Map above the two time-series panels
+pleft <- (
+  study_site /
+    left_timeseries
+) +
+  plot_layout(heights = c(1.01, 1))
+# Two equal-height facets on the right
+# Use this if male.plot is a faceted ggplot
+pright <- male.plot +
+  theme(
+    aspect.ratio = NULL,
+    panel.spacing.y = grid::unit(0.4, "lines")
+  )
+
+# Equal-width columns
+fig1 <- (
+  (pleft | pright) +
+    plot_layout(widths = c(1, 1))
+) &
+  theme(
+    text          = element_text(size = text_size),
+    axis.text     = element_text(size = text_size),
+    axis.title    = element_text(size = text_size),
+    strip.text    = element_text(size = text_size),
+    legend.text   = element_text(size = text_size),
+    legend.title  = element_text(size = text_size),
+    plot.title    = element_text(size = text_size),
+    plot.subtitle = element_text(size = text_size),
+    plot.caption  = element_text(size = text_size),
+
+    plot.margin = margin(5, 5, 5, 5)
+  )
+
+fig1
 
 
 ggsave("./Maturity research/Figures/Fig1.png", height= 6, width = 8)
@@ -681,11 +726,11 @@ ggsave("./Maturity research/Figures/Fig1.png", height= 6, width = 8)
 # Covariate plot ----
 m.dat <- read.csv("./Maturity research/Output/SNOW_male_modeldata.csv") %>% 
   dplyr::select(YEAR, LG_ABUND, COHORT_ABUND, TOCC) %>%
-  rename("Large male abundance (≥95mm)"=LG_ABUND, "Male cohort size (40-60mm)" = COHORT_ABUND, 
+  rename("Large male abundance (≥95 mm)"=LG_ABUND, "Male cohort size (40-60 mm)" = COHORT_ABUND, 
          "Male temperature occupied" = TOCC)
 f.dat<- read.csv("./Maturity research/Output/SNOW_female_modeldata.csv") %>% 
   dplyr::select(YEAR, FEM_MAT_ABUND, FEM_COHORT_ABUND, FEM_TOCC) %>%
-  rename("Mature female abundance" = FEM_MAT_ABUND, "Female cohort size (35-45mm)" = FEM_COHORT_ABUND, 
+  rename("Mature female abundance" = FEM_MAT_ABUND, "Female cohort size (35-45 mm)" = FEM_COHORT_ABUND, 
          "Female temperature occupied" = FEM_TOCC)
 
 cov.dat <- right_join(m.dat, f.dat) %>%
