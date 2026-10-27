@@ -1,5 +1,5 @@
 ## ------------------------------------------------------------
-# PURPOSE: to analyze maturity patterns in relation to biological and environmental drivers
+# PURPOSE: to analyze female maturity patterns in relation to biological and environmental drivers
 
 # Author: Emily Ryznar
 
@@ -46,24 +46,9 @@ ggplot(SAM.dat, aes(YEAR, SAM))+
   geom_smooth()
 
 
+# Read in female pmat 5565 and join with SAM.dat
 
-# Weighted prop mature in 55-65
-# Calculate weighted mean SAM for mature female
-fem.pmat <- spec.dat.sel$specimen %>% 
-  filter(SEX == 2, SIZE >=55 & SIZE <=65) %>%
-  mutate(MATURE  = case_when(CLUTCH_SIZE >0 ~ 1,
-                             TRUE ~ 0)) %>%
-  dplyr::select(YEAR, SEX, SIZE, SAMPLING_FACTOR, MATURE) %>%
-  group_by(YEAR) %>%
-  reframe(TOT_CRAB = sum(SAMPLING_FACTOR),
-          MATURE = sum(SAMPLING_FACTOR[MATURE == 1]),
-          IMMATURE = TOT_CRAB - MATURE,
-          PROP_MATURE = MATURE/TOT_CRAB,
-          PROP_IMMATURE = IMMATURE/TOT_CRAB) %>%
-  dplyr::select(YEAR, PROP_MATURE, MATURE, IMMATURE, TOT_CRAB) %>%
-  rename(PMAT_5565 = PROP_MATURE) 
-
-dat <- right_join(fem.pmat, SAM.dat)
+dat <- right_join(read.csv("./Maturity research/Data/fem.pmat.csv"), SAM.dat)
 
 ggplot(dat, aes(YEAR, PMAT_5565))+
   geom_point()+
@@ -130,6 +115,7 @@ fem.model.dat <- right_join(SAM.df, ice) %>%
 write.csv(fem.model.dat, "./Maturity research/Output/SNOW_female_modeldata.csv")
 
 M <- cor(fem.model.dat %>% dplyr::select(!c(YEAR, SAM, PMAT_5565, MATURE, IMMATURE)) %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
+
 corrplot::corrplot(M,
                    type = "upper",
                    method = "square",
@@ -205,18 +191,30 @@ M <- cor(cors %>% na.omit(), use = "pairwise.complete.obs", method = "pearson")
 M <- M[ , sort(colnames(M))]      # reorder columns
 M <- M[sort(rownames(M)), ]   
 
+
+pdf(
+  "female_correlations.pdf",
+  width = 10,
+  height = 10#,
+  #units = "in",
+  #res = 600
+)
+
 corrplot::corrplot(
   M,
   type      = "upper",
   method    = "color",      # or "square"
   order     = "alphabet",
   tl.col    = "black",      # label color
-  tl.cex    = 0.6,          # label size
+  tl.cex    = 0.8,          # label size
   tl.srt    = 45,           # label rotation
   addCoef.col = NA,         # no numbers on the plot
-  number.cex  = 0.4,        # (used if you keep numbers)
+  number.cex  = 0.5,       
   mar = c(0,0,1,0)          # smaller margins
 )
+
+dev.off()
+
 
 
 # ------------------------------------------
