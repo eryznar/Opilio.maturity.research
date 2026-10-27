@@ -1,5 +1,5 @@
 ## ------------------------------------------------------------
-# PURPOSE: to analyze maturity patterns in relation to biological and environmental drivers
+# PURPOSE: to fit sdmTMB maturity models for female snow crab
 
 # Author: Emily Ryznar
 
