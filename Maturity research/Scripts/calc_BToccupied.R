@@ -47,8 +47,7 @@ corners <- stations %>%
 # MALES
 # use crabpack to calculate zero-filled, per-station mature CPUE
 cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW", 
-                                size_min = 40, size_max = NULL,  sex = "male", 
-                                shell_condition = c("new_hardshell", "oldshell", "very_oldshell"))  #filtering for relevant range of SAM crab
+                                size_min = 40, size_max = NULL,  sex = "male")  #filtering for relevant range of SAM crab
 
 
 #Calculate EBS snow crab temperatures of occupancy (CPUE weighted) 
