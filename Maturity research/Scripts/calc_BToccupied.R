@@ -1,17 +1,8 @@
-# Calculate "D95" for each size sex group in EBS:
-#area of stations that make up 95% of the cumulative cpue
+# PURPOSE: To calculate temperature occupied (CPUE-weighted summer bottom temperature) from the EBS survey
 
-#Author: Erin Fedewa
+#Author: Erin Fedewa and Emily Ryznar
 
-#Follow ups: 
-#move toward spatiotemporal modeling approach to account for changing footprint
-#current approach is only using stations sampled every year
-
-# load ----
-library(tidyverse)
-
-## Read in setup
-#source("./Scripts/get_crab_data.R")
+# Load libs/params
 source("./Maturity research/Scripts/load_libs_params.R")
 
 # Selectivity
@@ -70,7 +61,7 @@ write.csv(temp_occ, "./Maturity research/Data/BT_occupied.csv")
 
 ##########################################
 # FEMALES
-# use crabpack to calculate zero-filled, per-station mature CPUE
+# use crabpack to calculate zero-filled, per-station female CPUE
 cpue <- crabpack::calc_cpue(crab_data = spec.dat.sel, species = "SNOW", 
                             size_min = 30, size_max = NULL,  sex = "female")  #filtering for relevant range of SAM crab
 
@@ -82,7 +73,8 @@ temp_occ <- cpue%>%
   filter(is.na(GEAR_TEMPERATURE) == FALSE) %>%
   group_by(YEAR) %>% 
   summarise(temp_occ = weighted.mean(GEAR_TEMPERATURE, w = CPUE, na.rm = T)) %>%
-  filter(is.na(temp_occ) == FALSE) 
+  filter(is.na(temp_occ) == FALSE) %>%
+  filter(YEAR>=1989)
 
 temp_occ %>%
   ggplot(aes(x = YEAR, y = temp_occ))+
